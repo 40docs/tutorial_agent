@@ -1,0 +1,3438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentic AI — Glass Box Demo</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; overflow: hidden; }
+    body { background: #0f0f1a; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f0f1a; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3c; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a4c; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+// ============================================================================
+// SECTION 1-5: SIMULATION ENGINE
+// Agentic AI Glass Box Demo
+// ============================================================================
+
+const { useState, useCallback, useEffect, useRef, useMemo } = React;
+
+// ============================================================================
+// 1. SHARED CONSTANTS
+// ============================================================================
+
+const COLORS = {
+  genai:      { bg: '#581c87', border: '#a855f7', text: '#c084fc', glow: 'rgba(168,85,247,0.4)' },
+  harness:    { bg: '#92400e', border: '#f59e0b', text: '#fbbf24', glow: 'rgba(245,158,11,0.4)' },
+  tools:      { bg: '#065f46', border: '#10b981', text: '#34d399', glow: 'rgba(16,185,129,0.4)' },
+  agents:     { bg: '#1e3a5f', border: '#3b82f6', text: '#60a5fa', glow: 'rgba(59,130,246,0.4)' },
+  compaction: { bg: '#7c2d12', border: '#f97316', text: '#fb923c', glow: 'rgba(249,115,22,0.4)' },
+  user:       { bg: '#052e16', border: '#4ade80', text: '#86efac', glow: 'rgba(74,222,128,0.4)' },
+};
+
+const COMPONENT_IDS = {
+  USER:         'user',
+  API:          'anthropic-api',
+  MODEL:        'model',
+  HARNESS:      'harness',
+  TOOL_READ:    'tool-read-file',
+  TOOL_TESTS:   'tool-run-tests',
+  TOOL_WRITE:   'tool-write-file',
+  ORCHESTRATOR: 'orchestrator',
+  EXPLORER:     'explorer-agent',
+  BUILDER:      'builder-agent',
+  REVIEWER:     'reviewer-agent',
+  COMPACTOR:    'compaction-engine',
+  AUDIT_LOG:    'audit-log',
+};
+
+const C = COMPONENT_IDS;
+
+const MAX_CONTEXT_TOKENS = 200000;
+
+// ============================================================================
+// 2. SIMULATED CODEBASE
+// ============================================================================
+
+const SIMULATED_CODEBASE = {
+  'src/auth/auth.js': `const jwt = require('jsonwebtoken');
+const { SECRET } = require('../config');
+
+/**
+ * Authentication module
+ * Handles JWT token validation and user sessions
+ */
+
+/**
+ * Validate a JWT token against expiry and signature
+ * @param {Object} token - Token object { value: string, expiry: number }
+ * @returns {boolean|Object} false if invalid, decoded payload if valid
+ */
+const validateToken = (token) => {
+  if (!token || !token.value || !token.expiry) {
+    return false;
+  }
+
+  // Check if the token has expired
+  // BUG: token.expiry is stored in Unix seconds, but Date.now() returns milliseconds
+  // This comparison is ALWAYS true (seconds < milliseconds), so all tokens appear expired
+  if (token.expiry < Date.now()) {  // line 23 — should be: token.expiry * 1000 < Date.now()
+    return false;
+  }
+
+  try {
+    return jwt.verify(token.value, SECRET);
+  } catch (err) {
+    return false;
+  }
+};
+
+/**
+ * Invalidate a token by adding to blocklist
+ */
+const invalidateToken = async (tokenValue) => {
+  await redis.sadd('token:blocklist', tokenValue);
+};
+
+/**
+ * Check if token is on blocklist
+ */
+const isBlocklisted = async (tokenValue) => {
+  return await redis.sismember('token:blocklist', tokenValue);
+};
+
+// TODO: Implement refresh token rotation - currently refresh tokens are issued
+// but never rotated on use, creating a security vulnerability where stolen
+// refresh tokens remain valid indefinitely. See ticket AUTH-247.
+// This needs to be addressed before the Q3 security audit.
+
+module.exports = { validateToken, invalidateToken, isBlocklisted };`,
+
+  'src/auth/tokens.js': `const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const { SECRET, REFRESH_SECRET } = require('../config');
+
+const ACCESS_TOKEN_TTL  = 3600;    // 1 hour in seconds
+const REFRESH_TOKEN_TTL = 604800;  // 7 days in seconds
+
+/**
+ * Generate an access token for a user
+ * Expiry is stored as Unix timestamp in SECONDS
+ */
+const generateAccessToken = (userId, roles = []) => {
+  const expiry = Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL;  // SECONDS
+
+  const value = jwt.sign(
+    { userId, roles, type: 'access' },
+    SECRET,
+    { expiresIn: ACCESS_TOKEN_TTL }
+  );
+
+  return { value, expiry };  // expiry is in SECONDS — this is the key mismatch
+};
+
+/**
+ * Generate a refresh token
+ */
+const generateRefreshToken = (userId) => {
+  const expiry = Math.floor(Date.now() / 1000) + REFRESH_TOKEN_TTL;
+  const value = crypto.randomBytes(40).toString('hex');
+
+  return { value, expiry, userId };
+};
+
+/**
+ * Decode token without verification (for logging only)
+ */
+const decodeToken = (tokenValue) => {
+  try {
+    return jwt.decode(tokenValue);
+  } catch {
+    return null;
+  }
+};
+
+module.exports = { generateAccessToken, generateRefreshToken, decodeToken };`,
+
+  'src/middleware/authMiddleware.js': `const { validateToken } = require('../auth/auth');
+
+/**
+ * Express middleware for JWT authentication
+ * Extracts token from Authorization header and validates it
+ */
+const authMiddleware = async (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+
+  const rawToken = authHeader.split(' ')[1];
+
+  // Token format from client: "value:expiry" (base64 encoded)
+  let token;
+  try {
+    const decoded = Buffer.from(rawToken, 'base64').toString('utf-8');
+    const [value, expiryStr] = decoded.split(':');
+    token = { value, expiry: parseInt(expiryStr, 10) };
+  } catch {
+    return res.status(401).json({ error: 'Malformed token' });
+  }
+
+  const result = validateToken(token);  // This always returns false due to the bug
+  if (!result) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  req.user = result;
+  next();
+};
+
+module.exports = { authMiddleware };`,
+
+  'src/routes/userRoutes.js': `const express = require('express');
+const router = express.Router();
+const { authMiddleware } = require('../middleware/authMiddleware');
+const UserService = require('../services/UserService');
+
+/**
+ * All routes require valid authentication
+ * Due to the auth bug, ALL of these endpoints are returning 401
+ */
+
+router.get('/profile', authMiddleware, async (req, res) => {
+  try {
+    const user = await UserService.getById(req.user.userId);
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.put('/profile', authMiddleware, async (req, res) => {
+  try {
+    const updated = await UserService.update(req.user.userId, req.body);
+    res.json({ user: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/settings', authMiddleware, async (req, res) => {
+  const settings = await UserService.getSettings(req.user.userId);
+  res.json({ settings });
+});
+
+module.exports = router;`,
+
+  'tests/auth.test.js': `const { validateToken } = require('../src/auth/auth');
+const { generateAccessToken } = require('../src/auth/tokens');
+
+describe('validateToken', () => {
+
+  it('should accept a valid, non-expired token', () => {
+    const { value, expiry } = generateAccessToken(123);
+    // expiry is in SECONDS (e.g. 1741234567)
+    // Date.now() is in MILLISECONDS (e.g. 1741234567000)
+    // The bug: expiry (seconds) < Date.now() (ms) is ALWAYS true
+    // So validateToken always returns false, and this test incorrectly PASSES
+    // because we expect false here — but for the wrong reason
+    const result = validateToken({ value, expiry });
+    expect(result).not.toBe(false);  // This test FAILS — bug is live
+  });
+
+  it('should reject an expired token', () => {
+    const expiry = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago in SECONDS
+    const { value } = generateAccessToken(123);
+    const result = validateToken({ value, expiry });
+    // This PASSES — but only because the bug makes ALL tokens appear expired
+    // The test is testing the right behavior but for the wrong reason
+    expect(result).toBe(false);
+  });
+
+  it('should reject a token with no expiry', () => {
+    const result = validateToken({ value: 'sometoken' });
+    expect(result).toBe(false);  // PASSES correctly
+  });
+
+  it('should reject null token', () => {
+    expect(validateToken(null)).toBe(false);  // PASSES correctly
+  });
+});`,
+};
+
+// ============================================================================
+// 3. TOOL DEFINITIONS (Anthropic API format)
+// ============================================================================
+
+const TOOL_DEFINITIONS = [
+  {
+    name: 'read_file',
+    description: 'Read the contents of a file from the codebase',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The file path to read' }
+      },
+      required: ['path']
+    }
+  },
+  {
+    name: 'run_tests',
+    description: 'Execute the test suite and return results',
+    input_schema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'Optional specific test file to run' }
+      }
+    }
+  },
+  {
+    name: 'write_file',
+    description: 'Write or overwrite a file with new content',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        content: { type: 'string' }
+      },
+      required: ['path', 'content']
+    }
+  }
+];
+
+const SYSTEM_PROMPT = 'You are a senior software engineer. You have access to tools to read files, run tests, and write fixes. Work methodically: read the relevant files first, understand the bug, then fix it and verify.';
+
+// ============================================================================
+// 4. PRE-BUILT API PAYLOADS
+// ============================================================================
+
+const CODE_SNIPPET = `const validateToken = (token) => {
+  if (!token || !token.value || !token.expiry) return false;
+  if (token.expiry < Date.now()) {  // line 23
+    return false;
+  }
+  return jwt.verify(token.value, SECRET);
+};`;
+
+const API = {
+
+  // --- ACT 1: Traditional GenAI ---
+
+  act1Request1: {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: `Our authentication is broken — users can't log in. Here's the validation function:\n\n\`\`\`javascript\n${CODE_SNIPPET}\n\`\`\`\n\nFind the bug and suggest a fix.`
+      }
+    ]
+  },
+
+  act1Response1: {
+    id: 'msg_act1_001',
+    type: 'message',
+    role: 'assistant',
+    content: [{
+      type: 'text',
+      text: "Looking at the `validateToken` function, I can see a potential issue on line 23. The comparison `token.expiry < Date.now()` might be comparing values in different units.\n\n`Date.now()` returns milliseconds since Unix epoch (e.g., `1741234567000`), while JWT expiry fields are typically stored as Unix timestamps in **seconds** (e.g., `1741234567`).\n\nIf `token.expiry` is in seconds, then it will always be much smaller than `Date.now()` in milliseconds, causing every token to appear expired immediately.\n\n**Suggested fix:**\n```javascript\nif (token.expiry * 1000 < Date.now()) {\n```\nOr alternatively:\n```javascript\nif (token.expiry < Math.floor(Date.now() / 1000)) {\n```\n\nHowever, I can't confirm this without seeing how `token.expiry` is set. If you can share `tokens.js` where the token is generated, I can verify the units being used."
+    }],
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 892, output_tokens: 198 }
+  },
+
+  act1Request2: {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: `Our authentication is broken — users can't log in. Here's the validation function:\n\n\`\`\`javascript\n${CODE_SNIPPET}\n\`\`\`\n\nFind the bug and suggest a fix.`
+      },
+      {
+        role: 'assistant',
+        content: "Looking at the `validateToken` function, I can see a potential issue on line 23. The comparison `token.expiry < Date.now()` might be comparing values in different units.\n\n`Date.now()` returns milliseconds since Unix epoch (e.g., `1741234567000`), while JWT expiry fields are typically stored as Unix timestamps in **seconds** (e.g., `1741234567`).\n\nIf `token.expiry` is in seconds, then it will always be much smaller than `Date.now()` in milliseconds, causing every token to appear expired immediately.\n\n**Suggested fix:**\n```javascript\nif (token.expiry * 1000 < Date.now()) {\n```\n\nHowever, I can't confirm this without seeing how `token.expiry` is set."
+      },
+      {
+        role: 'user',
+        content: 'Can you also check tokens.js to confirm the expiry format?'
+      }
+    ]
+  },
+
+  act1Response2: {
+    id: 'msg_act1_002',
+    type: 'message',
+    role: 'assistant',
+    content: [{
+      type: 'text',
+      text: "I don't have access to `tokens.js` — you've only shared the `validateToken` function from `auth.js`. To confirm the expiry format, I'd need you to paste the contents of `src/auth/tokens.js`.\n\nBased on what I can see, my best assessment is that `token.expiry` is in seconds (standard JWT practice), which would make the fix `token.expiry * 1000 < Date.now()`. But I can't verify this or check whether the test suite would pass — I'm working only from what's been shared with me."
+    }],
+    model: 'claude-sonnet-4-6',
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 1247, output_tokens: 112 }
+  },
+
+  // --- ACT 2: Agentic Loop ---
+
+  act2Request1: {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    tools: TOOL_DEFINITIONS,
+    messages: [
+      { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." }
+    ]
+  },
+
+  act2Response1: {
+    id: 'msg_act2_001', type: 'message', role: 'assistant',
+    content: [
+      { type: 'text', text: "I'll start by reading the authentication module to understand the code." },
+      { type: 'tool_use', id: 'toolu_a2_01', name: 'read_file', input: { path: 'src/auth/auth.js' } }
+    ],
+    model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+    usage: { input_tokens: 612, output_tokens: 58 }
+  },
+
+  act2Request2: {
+    model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOL_DEFINITIONS,
+    messages: [
+      { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." },
+      { role: 'assistant', content: [
+        { type: 'text', text: "I'll start by reading the authentication module to understand the code." },
+        { type: 'tool_use', id: 'toolu_a2_01', name: 'read_file', input: { path: 'src/auth/auth.js' } }
+      ]},
+      { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'toolu_a2_01', content: SIMULATED_CODEBASE['src/auth/auth.js'] }
+      ]}
+    ]
+  },
+
+  act2Response2: {
+    id: 'msg_act2_002', type: 'message', role: 'assistant',
+    content: [
+      { type: 'text', text: "I can see the comparison on line 23: `token.expiry < Date.now()`. The expiry might be in seconds while Date.now() is milliseconds. Let me check tokens.js to confirm how expiry is stored." },
+      { type: 'tool_use', id: 'toolu_a2_02', name: 'read_file', input: { path: 'src/auth/tokens.js' } }
+    ],
+    model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+    usage: { input_tokens: 1205, output_tokens: 74 }
+  },
+
+  act2Request3: {
+    model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOL_DEFINITIONS,
+    messages: [
+      { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." },
+      { role: 'assistant', content: [
+        { type: 'text', text: "I'll start by reading the authentication module to understand the code." },
+        { type: 'tool_use', id: 'toolu_a2_01', name: 'read_file', input: { path: 'src/auth/auth.js' } }
+      ]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_01', content: SIMULATED_CODEBASE['src/auth/auth.js'] }]},
+      { role: 'assistant', content: [
+        { type: 'text', text: "I can see the comparison on line 23. Let me check tokens.js to confirm how expiry is stored." },
+        { type: 'tool_use', id: 'toolu_a2_02', name: 'read_file', input: { path: 'src/auth/tokens.js' } }
+      ]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_02', content: SIMULATED_CODEBASE['src/auth/tokens.js'] }]}
+    ]
+  },
+
+  act2Response3: {
+    id: 'msg_act2_003', type: 'message', role: 'assistant',
+    content: [
+      { type: 'text', text: "Confirmed. `tokens.js` line 14: `Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL` — expiry is in **seconds**. But auth.js compares against `Date.now()` which is milliseconds. Let me run the tests first to see the current state." },
+      { type: 'tool_use', id: 'toolu_a2_03', name: 'run_tests', input: { target: 'tests/auth.test.js' } }
+    ],
+    model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+    usage: { input_tokens: 1892, output_tokens: 88 }
+  },
+
+  act2Request4: {
+    model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOL_DEFINITIONS,
+    messages: [
+      { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." },
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'toolu_a2_01', name: 'read_file', input: { path: 'src/auth/auth.js' } }
+      ]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_01', content: SIMULATED_CODEBASE['src/auth/auth.js'] }]},
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'toolu_a2_02', name: 'read_file', input: { path: 'src/auth/tokens.js' } }
+      ]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_02', content: SIMULATED_CODEBASE['src/auth/tokens.js'] }]},
+      { role: 'assistant', content: [
+        { type: 'text', text: "Confirmed. expiry is in seconds. Let me run the tests to see the current state." },
+        { type: 'tool_use', id: 'toolu_a2_03', name: 'run_tests', input: { target: 'tests/auth.test.js' } }
+      ]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_03', content: `FAIL tests/auth.test.js
+  validateToken
+    ✓ should reject an expired token (3ms)
+    ✓ should reject a token with no expiry (1ms)
+    ✓ should reject null token (0ms)
+    ✗ should accept a valid, non-expired token (4ms)
+      Expected: not false
+      Received: false
+
+Tests: 1 failed, 3 passed, 4 total` }]}
+    ]
+  },
+
+  act2Response4: {
+    id: 'msg_act2_004', type: 'message', role: 'assistant',
+    content: [
+      { type: 'text', text: "As expected — valid tokens are being rejected. Now I'll write the fix: multiply expiry by 1000 to convert seconds to milliseconds before comparison." },
+      { type: 'tool_use', id: 'toolu_a2_04', name: 'write_file', input: {
+        path: 'src/auth/auth.js',
+        content: SIMULATED_CODEBASE['src/auth/auth.js'].replace(
+          'if (token.expiry < Date.now()) {  // line 23 — should be: token.expiry * 1000 < Date.now()',
+          'if (token.expiry * 1000 < Date.now()) {  // fixed: convert seconds to milliseconds'
+        )
+      }}
+    ],
+    model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+    usage: { input_tokens: 2617, output_tokens: 112 }
+  },
+
+  act2Request5: {
+    model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOL_DEFINITIONS,
+    messages: [
+      { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_01', name: 'read_file', input: { path: 'src/auth/auth.js' } }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_01', content: SIMULATED_CODEBASE['src/auth/auth.js'] }]},
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_02', name: 'read_file', input: { path: 'src/auth/tokens.js' } }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_02', content: SIMULATED_CODEBASE['src/auth/tokens.js'] }]},
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_03', name: 'run_tests', input: {} }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_03', content: 'FAIL tests/auth.test.js\n  ✗ should accept a valid, non-expired token\n  ✓ should reject an expired token\n  ✓ should reject null token' }]},
+      { role: 'assistant', content: [
+        { type: 'text', text: "Writing the fix now." },
+        { type: 'tool_use', id: 'toolu_a2_04', name: 'write_file', input: { path: 'src/auth/auth.js', content: '...(fixed content)...' } }
+      ]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_04', content: 'File written successfully: src/auth/auth.js' }]}
+    ]
+  },
+
+  act2Response5: {
+    id: 'msg_act2_005', type: 'message', role: 'assistant',
+    content: [
+      { type: 'text', text: "Fix applied. Running tests to verify." },
+      { type: 'tool_use', id: 'toolu_a2_05', name: 'run_tests', input: { target: 'tests/auth.test.js' } }
+    ],
+    model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+    usage: { input_tokens: 3102, output_tokens: 45 }
+  },
+
+  act2Request6: {
+    model: 'claude-sonnet-4-6', max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOL_DEFINITIONS,
+    messages: [
+      { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_01', name: 'read_file', input: { path: 'src/auth/auth.js' } }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_01', content: SIMULATED_CODEBASE['src/auth/auth.js'] }]},
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_02', name: 'read_file', input: { path: 'src/auth/tokens.js' } }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_02', content: SIMULATED_CODEBASE['src/auth/tokens.js'] }]},
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_03', name: 'run_tests', input: {} }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_03', content: 'FAIL — 1 test failing' }]},
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_04', name: 'write_file', input: { path: 'src/auth/auth.js', content: '...fixed...' } }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_04', content: 'File written successfully' }]},
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_a2_05', name: 'run_tests', input: {} }]},
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a2_05', content: `PASS tests/auth.test.js
+  validateToken
+    ✓ should accept a valid, non-expired token (2ms)
+    ✓ should reject an expired token (1ms)
+    ✓ should reject a token with no expiry (0ms)
+    ✓ should reject null token (0ms)
+
+Tests: 4 passed, 4 total
+Time: 0.8s` }]}
+    ]
+  },
+
+  act2Response6: {
+    id: 'msg_act2_006', type: 'message', role: 'assistant',
+    content: [{
+      type: 'text',
+      text: "All 4 tests passing. The bug was a units mismatch: `token.expiry` was stored in Unix **seconds** (from `Math.floor(Date.now() / 1000)` in tokens.js), but the comparison used `Date.now()` which returns **milliseconds**. Since seconds are always ~1000x smaller than the equivalent millisecond value, every token appeared expired immediately.\n\n**Fix applied:** `token.expiry * 1000 < Date.now()` — converting seconds to milliseconds before comparison.\n\nUsers should now be able to log in successfully."
+    }],
+    model: 'claude-sonnet-4-6', stop_reason: 'end_turn',
+    usage: { input_tokens: 3587, output_tokens: 147 }
+  },
+
+  // --- ACT 3: Multi-Agent (representative payloads) ---
+
+  orchestratorRequest: {
+    model: 'claude-sonnet-4-6', max_tokens: 2048,
+    system: 'You are an orchestrator agent. Break down complex engineering tasks into a plan for specialist agents: an Explorer (reads code, produces findings), a Builder (writes fixes), and a Reviewer (validates changes).',
+    tools: TOOL_DEFINITIONS,
+    messages: [{ role: 'user', content: "The authentication module has a bug — users can't log in. Coordinate the team to find and fix it." }]
+  },
+
+  orchestratorResponse: {
+    id: 'msg_orch_001', type: 'message', role: 'assistant',
+    content: [{ type: 'text', text: "I'll coordinate three specialist agents:\n\n**Plan:**\n1. **Explorer Agent** — Read all auth-related files, trace the bug, produce a handoff document\n2. **Builder Agent** — Receive Explorer's findings, write the fix, run verification tests\n3. **Reviewer Agent** — Review the patch with fresh context, validate correctness\n\nDeploying Explorer now." }],
+    model: 'claude-sonnet-4-6', stop_reason: 'end_turn',
+    usage: { input_tokens: 387, output_tokens: 98 }
+  },
+
+  explorerHandoff: {
+    title: 'Codebase Exploration Summary',
+    recipient: 'builder_agent',
+    task: "Find and fix the authentication bug preventing user logins",
+    architectureOverview: "JWT auth system with three key modules: auth.js (validation), tokens.js (generation), authMiddleware.js (Express integration).",
+    bugLocation: {
+      file: 'src/auth/auth.js',
+      line: 23,
+      code: 'if (token.expiry < Date.now())',
+      issue: "token.expiry is stored in Unix SECONDS (see tokens.js line 14: Math.floor(Date.now() / 1000)). Date.now() returns MILLISECONDS. Seconds are always ~1000x smaller, so this comparison is always true — all tokens appear expired."
+    },
+    fix: "Change to: if (token.expiry * 1000 < Date.now())",
+    testNote: "tests/auth.test.js has a test 'should accept a valid, non-expired token' that currently fails. After fix it should pass. The 'should reject an expired token' test currently passes but for the wrong reason.",
+    filesToChange: ['src/auth/auth.js'],
+    filesToIgnore: ['src/routes/userRoutes.js', 'src/middleware/authMiddleware.js'],
+    tokenCount: 312
+  },
+
+  // --- ACT 4: Compaction ---
+
+  compactionSummary: {
+    summary: "Investigating auth bug in validateToken() (src/auth/auth.js line 23). Root cause identified: token.expiry is in Unix seconds, compared against Date.now() which is milliseconds. Fix: multiply expiry by 1000. Confirmed by reading tokens.js which uses Math.floor(Date.now() / 1000). Tests show 1 failing: 'should accept valid non-expired token'. Fix is: change `token.expiry < Date.now()` to `token.expiry * 1000 < Date.now()`. Ready to apply fix.",
+    tokenCount: 287
+  },
+
+  whatWasLost: [
+    {
+      title: 'Verbose middleware trace',
+      detail: 'Full request flow analysis through authMiddleware.js showing how the 401 error propagates to clients...',
+      risk: 'low'
+    },
+    {
+      title: 'Refresh token TODO (auth.js line ~92)',
+      detail: 'TODO: Implement refresh token rotation - currently refresh tokens are issued but never rotated on use, creating a security vulnerability where stolen refresh tokens remain valid indefinitely. See ticket AUTH-247.',
+      risk: 'high',
+      flagged: true
+    },
+    {
+      title: 'Routes investigation notes',
+      detail: 'Analysis of userRoutes.js showing all endpoints returning 401 due to the auth bug...',
+      risk: 'low'
+    }
+  ],
+};
+
+// ============================================================================
+// 5. ACT METADATA
+// ============================================================================
+
+const ACT_METADATA = [
+  null,
+  {
+    number: 1,
+    title: 'Traditional GenAI',
+    subtitle: 'The Pure Function',
+    description: 'A single API call in, a single response out. The model has no tools, no memory, no loop. Watch the context window fill as history accumulates — and see what happens when the model needs information it was never given.',
+    watchFor: 'Notice how the entire conversation history is re-sent on every call. The model has no memory — just a growing transcript. And when asked about tokens.js, it can only admit it doesn\'t have access.',
+    accentColor: '#a855f7',
+  },
+  {
+    number: 2,
+    title: 'The Agentic Loop',
+    subtitle: 'Tools and Feedback',
+    description: 'The model gains tools and a feedback cycle. It reads files, runs tests, writes fixes, and verifies — driven by the harness. This is the first time the model can be wrong and recover.',
+    watchFor: 'The stop_reason field tells you everything: "tool_use" means the loop continues, "end_turn" means it\'s done. Watch the context window grow with each iteration — tool results accumulate fast.',
+    accentColor: '#f59e0b',
+  },
+  {
+    number: 3,
+    title: 'Multi-Agent Systems',
+    subtitle: 'Division of Cognitive Labor',
+    description: 'Four specialized agents tackle the same task. Each gets its own fresh context, its own system prompt, its own tool set. Watch how 40,000 tokens of exploration compress to a 300-token handoff.',
+    watchFor: 'Compare the Explorer\'s context fill (85%) with the Builder\'s starting context (nearly empty). The handoff document is the key — it\'s where all the compression happens.',
+    accentColor: '#3b82f6',
+  },
+  {
+    number: 4,
+    title: 'Compaction',
+    subtitle: 'The Necessary Tradeoff',
+    description: 'When the context window fills to 70%, the harness triggers compaction. Watch the token count drop dramatically — and then see what information was lost in the process.',
+    watchFor: 'The "What Was Lost" panel reveals items that were present in the raw context but did not survive compaction. One of them — the refresh token TODO — will matter later.',
+    accentColor: '#f97316',
+  },
+];
+
+// ============================================================================
+// 6. STEP SEQUENCES (49 total steps)
+// ============================================================================
+
+const mk = (systemPromptTokens, conversationTokens, toolResultTokens) => {
+  const totalTokens = systemPromptTokens + conversationTokens + toolResultTokens;
+  const percentUsed = parseFloat((totalTokens / MAX_CONTEXT_TOKENS * 100).toFixed(2));
+  const breakdown = [
+    { label: 'System prompt', tokens: systemPromptTokens, color: '#a855f7' },
+    { label: 'Conversation', tokens: conversationTokens, color: '#f59e0b' },
+  ];
+  if (toolResultTokens > 0) breakdown.push({ label: 'Tool results', tokens: toolResultTokens, color: '#10b981' });
+  return { systemPromptTokens, conversationTokens, toolResultTokens, totalTokens, percentUsed, breakdown };
+};
+
+const STEPS = [
+
+  // ===========================================================================
+  // ACT 1 — Traditional GenAI (8 steps)
+  // ===========================================================================
+
+  {
+    id: 'act1-step1', act: 1, phase: 'message',
+    label: 'User Sends Code + Question',
+    activeComponents: [C.USER, C.HARNESS],
+    messageFlow: null,
+    message: null,
+    narration: "The user pastes auth.js and asks: \"Find the bug.\" The harness receives this and prepares an API request. There are no tools declared. No loop. No memory. Just one shot at an answer.",
+    stateMutations: { systemPhase: 'processing', harnessState: 'building_request' },
+    chatUpdate: {
+      role: 'user',
+      content: "The authentication module has a bug — users can't log in. Here's validateToken from auth.js — find the bug and suggest a fix.",
+      codeAttachment: {
+        filename: 'src/auth/auth.js',
+        code: `const validateToken = (token) => {
+  if (!token || !token.value || !token.expiry) {
+    return false;
+  }
+
+  // Check if the token has expired
+  // BUG on line 23: token.expiry is in seconds, Date.now() is milliseconds
+  if (token.expiry < Date.now()) {
+    return false;
+  }
+
+  try {
+    return jwt.verify(token.value, SECRET);
+  } catch (err) {
+    return false;
+  }
+};`,
+      },
+    },
+    contextState: mk(500, 392, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step2', act: 1, phase: 'api_call',
+    label: 'API Request #1 — No Tools',
+    activeComponents: [C.HARNESS, C.API],
+    messageFlow: { from: C.HARNESS, to: C.API, type: 'api_request', label: 'Request #1' },
+    message: API.act1Request1,
+    narration: "The harness sends a single HTTP request to the Anthropic API. The messages array has one entry. Notice what's missing: no tools array. The model will receive this payload, run inference once, and return text. That's it. One request, one response.",
+    stateMutations: { harnessState: 'waiting_for_api', apiCallCount: 1 },
+    chatUpdate: null,
+    contextState: mk(500, 392, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step3', act: 1, phase: 'api_response',
+    label: 'Model Responds — A Guess',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #1' },
+    message: API.act1Response1,
+    narration: "The model returns a text response. stop_reason is end_turn — it's done. The model spotted the likely issue (seconds vs milliseconds) and even guessed at the fix. But look carefully: it says \"If token.expiry is in seconds...\" and \"I can't confirm without seeing tokens.js.\" It's reasoning from training data, not from evidence.",
+    stateMutations: { harnessState: 'rendering' },
+    chatUpdate: null,
+    contextState: mk(500, 392, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step4', act: 1, phase: 'render',
+    label: 'Response Rendered',
+    activeComponents: [C.HARNESS],
+    messageFlow: null,
+    message: null,
+    narration: "The model's response appears in the chat. It gave a plausible answer — but it couldn't verify. It couldn't read tokens.js. It couldn't run the tests to confirm the fix works. It made an educated guess. That's all traditional GenAI can do: pattern-match from training, not from evidence.",
+    stateMutations: { harnessState: 'idle', systemPhase: 'idle' },
+    chatUpdate: { role: 'assistant', content: API.act1Response1.content[0].text },
+    contextState: mk(500, 392, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step5', act: 1, phase: 'message',
+    label: 'Follow-Up: Check tokens.js',
+    activeComponents: [C.USER, C.HARNESS],
+    messageFlow: null,
+    message: null,
+    narration: "The user asks a natural follow-up: \"Can you check tokens.js to confirm?\" The harness now builds a second API request. Watch what happens to the messages array — the entire conversation so far must be re-sent. The model has no memory. It only knows what's in the payload.",
+    stateMutations: { systemPhase: 'processing', harnessState: 'building_request' },
+    chatUpdate: { role: 'user', content: 'Can you also check tokens.js to confirm the expiry format?' },
+    contextState: mk(500, 745, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step6', act: 1, phase: 'api_call',
+    label: 'API Request #2 — Full History Re-sent',
+    activeComponents: [C.HARNESS, C.API],
+    messageFlow: { from: C.HARNESS, to: C.API, type: 'api_request', label: 'Request #2' },
+    message: API.act1Request2,
+    narration: "Look at this payload. The messages array now has 3 entries: the original user message, the model's full response, and the new follow-up question. Every token from turn 1 is being re-sent. The model doesn't \"remember\" — the harness re-packages the full transcript into each new request. Token count jumps from 892 to 1,247.",
+    stateMutations: { harnessState: 'waiting_for_api', apiCallCount: 2 },
+    chatUpdate: null,
+    contextState: mk(500, 1247, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step7', act: 1, phase: 'api_response',
+    label: 'Model: I Cannot Access tokens.js',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #2' },
+    message: API.act1Response2,
+    narration: "The model responds: \"I don't have access to tokens.js.\" This is the honest truth. The model can only analyze what was literally pasted into the messages array. It cannot look up files, run code, or reach outside the payload. This is a structural limit, not an intelligence limit.",
+    stateMutations: { harnessState: 'rendering' },
+    chatUpdate: { role: 'assistant', content: API.act1Response2.content[0].text },
+    contextState: mk(500, 1247, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act1-step8', act: 1, phase: 'insight',
+    label: 'Act 1 Summary',
+    activeComponents: [C.HARNESS],
+    messageFlow: null,
+    message: null,
+    narration: "Traditional GenAI: one shot, no tools, no loop. The model gave a plausible guess but couldn't verify it. It couldn't read files it wasn't given. It couldn't run the tests. And every turn re-sends the full history, growing the payload. This is powerful for well-bounded tasks — but for anything requiring discovery or verification, there has to be a better way.",
+    stateMutations: { systemPhase: 'idle', harnessState: 'idle', apiCallCount: 0 },
+    chatUpdate: null,
+    contextState: mk(500, 1247, 0),
+    activeAgent: null, compactionData: null,
+  },
+
+  // ===========================================================================
+  // ACT 2 — The Agentic Loop (14 steps)
+  // ===========================================================================
+
+  {
+    id: 'act2-step1', act: 2, phase: 'setup',
+    label: 'Harness Initializes with Tools',
+    activeComponents: [C.HARNESS, C.TOOL_READ, C.TOOL_TESTS, C.TOOL_WRITE],
+    messageFlow: null,
+    message: TOOL_DEFINITIONS,
+    narration: "The harness initializes with a tools array declared: read_file, run_tests, write_file. Each tool has a name, description, and JSON Schema for its inputs. These will be sent to the model on every API call. The model can now request tool execution — but it can't execute them itself. That's the harness's job.",
+    stateMutations: { systemPhase: 'idle', harnessState: 'idle' },
+    chatUpdate: null,
+    contextState: mk(500, 0, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step2', act: 2, phase: 'message',
+    label: 'User Submits Task',
+    activeComponents: [C.USER, C.HARNESS],
+    messageFlow: null,
+    message: null,
+    narration: "Same task as Act 1: find and fix the auth bug. But this time the harness is set up very differently. The model will receive tool definitions. Instead of guessing, it can actually read the files it needs. The harness is ready to execute whatever the model requests.",
+    stateMutations: { systemPhase: 'processing', harnessState: 'building_request' },
+    chatUpdate: { role: 'user', content: "The authentication module has a bug — users can't log in. Find the bug and fix it." },
+    contextState: mk(500, 112, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step3', act: 2, phase: 'api_call',
+    label: 'API Request #1 — With Tools',
+    activeComponents: [C.HARNESS, C.API],
+    messageFlow: { from: C.HARNESS, to: C.API, type: 'api_request', label: 'Request #1' },
+    message: API.act2Request1,
+    narration: "Notice this request includes a tools array — 3 tool definitions with full JSON Schema. The harness always sends all available tools. The model will decide whether to use them. Token count is higher than Act 1's first request because the tool definitions themselves consume ~350 tokens.",
+    stateMutations: { harnessState: 'waiting_for_api', apiCallCount: 1 },
+    chatUpdate: null,
+    contextState: mk(500, 612, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step4', act: 2, phase: 'api_response',
+    label: 'Model Returns tool_use — Not Text',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #1' },
+    message: API.act2Response1,
+    narration: "This is different from Act 1. Instead of text, the model returns a tool_use block: { name: \"read_file\", input: { path: \"src/auth/auth.js\" } }. And the stop_reason is \"tool_use\" — not \"end_turn\". The model has stopped generating and is waiting for the tool result. The harness must now execute the tool.",
+    stateMutations: { harnessState: 'executing_tool', currentTool: 'read_file' },
+    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'read_file', args: { path: 'src/auth/auth.js' }, toolUseId: 'toolu_a2_01' },
+    contextState: mk(500, 670, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step5', act: 2, phase: 'tool_execute',
+    label: 'Harness Executes read_file',
+    activeComponents: [C.HARNESS, C.TOOL_READ],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_READ, type: 'tool_call', label: 'read_file' },
+    message: { file: 'src/auth/auth.js', contents: SIMULATED_CODEBASE['src/auth/auth.js'] },
+    narration: "The harness parses the tool_use block, dispatches to the read_file function, and gets the file contents back. The harness then injects this as a tool_result into the messages array — the model will see it on the next API call. Context is growing: the full auth.js content (~800 tokens) just joined the payload.",
+    stateMutations: { harnessState: 'injecting_result', currentTool: null },
+    chatUpdate: { role: 'tool_result', content: 'Read src/auth/auth.js — 48 lines', toolUseId: 'toolu_a2_01' },
+    contextState: mk(500, 670, 850),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step6', act: 2, phase: 'api_response',
+    label: 'Model Returns tool_use — tokens.js',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #2' },
+    message: API.act2Response2,
+    narration: "The model reads auth.js, spots the suspicious comparison on line 23, and decides it needs to see tokens.js to confirm how expiry is stored. Another tool_use, another stop_reason: \"tool_use\". The loop continues. The model is building evidence before committing to a fix — this is the self-grounding that GenAI lacked.",
+    stateMutations: { harnessState: 'executing_tool', currentTool: 'read_file', apiCallCount: 2 },
+    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'read_file', args: { path: 'src/auth/tokens.js' }, toolUseId: 'toolu_a2_02' },
+    contextState: mk(500, 1205, 850),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step7', act: 2, phase: 'tool_execute',
+    label: 'Harness Executes read_file — tokens.js',
+    activeComponents: [C.HARNESS, C.TOOL_READ],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_READ, type: 'tool_call', label: 'read_file' },
+    message: { file: 'src/auth/tokens.js', contents: SIMULATED_CODEBASE['src/auth/tokens.js'] },
+    narration: "tokens.js is read. Line 14 is the smoking gun: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL. The expiry is stored in seconds. Now the model has the evidence it needs. Context has grown again — another ~700 tokens of file contents added to the payload.",
+    stateMutations: { harnessState: 'injecting_result' },
+    chatUpdate: { role: 'tool_result', content: 'Read src/auth/tokens.js — 38 lines', toolUseId: 'toolu_a2_02' },
+    contextState: mk(500, 1205, 1580),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step8', act: 2, phase: 'api_response',
+    label: 'Model Returns tool_use — run_tests',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #3' },
+    message: API.act2Response3,
+    narration: "Bug confirmed. But the model doesn't just write the fix — it runs the tests first to understand the current state. This is methodical, evidence-driven reasoning. It wants to see what's failing before changing anything. A human engineer would do the same.",
+    stateMutations: { harnessState: 'executing_tool', currentTool: 'run_tests', apiCallCount: 3 },
+    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'run_tests', args: { target: 'tests/auth.test.js' }, toolUseId: 'toolu_a2_03' },
+    contextState: mk(500, 1892, 1580),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step9', act: 2, phase: 'tool_execute',
+    label: 'Harness Executes run_tests',
+    activeComponents: [C.HARNESS, C.TOOL_TESTS],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_TESTS, type: 'tool_call', label: 'run_tests' },
+    message: { result: 'FAIL — 1 test failing: "should accept a valid, non-expired token"' },
+    narration: "Test results: 3 pass, 1 fails. The failing test is \"should accept a valid, non-expired token\" — exactly what we'd expect from this bug. Interesting: the \"should reject an expired token\" test passes, but only because the bug makes ALL tokens appear expired. The tests are misleading. Context now at ~5,700 tokens.",
+    stateMutations: { harnessState: 'injecting_result', currentTool: null },
+    chatUpdate: { role: 'tool_result', content: 'FAIL — 1 failing: should accept a valid, non-expired token', toolUseId: 'toolu_a2_03' },
+    contextState: mk(500, 1892, 2480),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step10', act: 2, phase: 'api_response',
+    label: 'Model Returns tool_use — write_file (fix)',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #4' },
+    message: API.act2Response4,
+    narration: "The model now writes the fix: change line 23 from token.expiry < Date.now() to token.expiry * 1000 < Date.now(). The write_file tool call contains the complete corrected file. Note: this is the model requesting the write — the harness will execute it.",
+    stateMutations: { harnessState: 'executing_tool', currentTool: 'write_file', apiCallCount: 4 },
+    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'write_file', args: { path: 'src/auth/auth.js', content: '...(fixed content)...' }, toolUseId: 'toolu_a2_04' },
+    contextState: mk(500, 2617, 2480),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step11', act: 2, phase: 'tool_execute',
+    label: 'Harness Executes write_file',
+    activeComponents: [C.HARNESS, C.TOOL_WRITE],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_WRITE, type: 'tool_call', label: 'write_file' },
+    message: { file: 'src/auth/auth.js', action: 'written', lines: 48 },
+    narration: "The harness writes the fixed file to disk. The side effect has happened in the real world. The model requested it, the harness executed it. This clean separation — model requests, harness acts — is fundamental to the agentic architecture.",
+    stateMutations: { harnessState: 'injecting_result', currentTool: null },
+    chatUpdate: { role: 'tool_result', content: 'File written: src/auth/auth.js', toolUseId: 'toolu_a2_04' },
+    contextState: mk(500, 2617, 2650),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step12', act: 2, phase: 'api_response',
+    label: 'Model Returns tool_use — Verify Tests',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #5' },
+    message: API.act2Response5,
+    narration: "The model doesn't stop at writing the fix — it runs the tests again to verify. This is the self-correction loop in action: try → observe → verify. If the tests still failed, the model would iterate. It won't return end_turn until it has evidence that the fix works.",
+    stateMutations: { harnessState: 'executing_tool', currentTool: 'run_tests', apiCallCount: 5 },
+    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'run_tests', args: {}, toolUseId: 'toolu_a2_05' },
+    contextState: mk(500, 3102, 2650),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step13', act: 2, phase: 'tool_execute',
+    label: 'Tests Pass — Fix Verified',
+    activeComponents: [C.HARNESS, C.TOOL_TESTS],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_TESTS, type: 'tool_call', label: 'run_tests' },
+    message: { result: 'PASS — 4/4 tests passing' },
+    narration: "All 4 tests pass. The fix is verified. The harness injects the successful test output as a tool_result. Now the model has all the evidence it needs to write a final summary and return end_turn.",
+    stateMutations: { harnessState: 'injecting_result', currentTool: null },
+    chatUpdate: { role: 'tool_result', content: 'PASS — 4/4 tests passing', toolUseId: 'toolu_a2_05' },
+    contextState: mk(500, 3102, 3350),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act2-step14', act: 2, phase: 'api_response',
+    label: 'Model Returns end_turn — Done',
+    activeComponents: [C.API, C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #6' },
+    message: API.act2Response6,
+    narration: "stop_reason: \"end_turn\". The model is done. 6 API calls, 5 tool executions, 1 verified fix. Compare this to Act 1: the model didn't guess — it found the bug by reading the right files, confirmed it by running the tests, applied the fix, and verified it. But look at the context window: ~8,200 tokens after just 2 files and a few test runs. For a large codebase, this grows fast.",
+    stateMutations: { systemPhase: 'idle', harnessState: 'idle', apiCallCount: 0, currentTool: null },
+    chatUpdate: { role: 'assistant', content: API.act2Response6.content[0].text },
+    contextState: mk(500, 3587, 3350),
+    activeAgent: null, compactionData: null,
+  },
+
+  // ===========================================================================
+  // ACT 3 — Multi-Agent Systems (16 steps)
+  // ===========================================================================
+
+  {
+    id: 'act3-step1', act: 3, phase: 'orchestrator',
+    label: 'Orchestrator Receives Task',
+    activeComponents: [C.ORCHESTRATOR],
+    messageFlow: null,
+    message: API.orchestratorRequest,
+    narration: "The same task arrives, but now it goes to an Orchestrator agent first. The orchestrator has its own system prompt, its own context, its own API call. It doesn't do domain work — it does coordination work. Its job is to break the task down and route it to the right specialists.",
+    stateMutations: { systemPhase: 'processing', activeAgent: 'orchestrator', orchestratorState: 'planning' },
+    chatUpdate: { role: 'user', content: "The authentication module has a bug — users can't log in. Coordinate the team to find and fix it." },
+    contextState: mk(500, 387, 0),
+    activeAgent: 'orchestrator', compactionData: null,
+  },
+  {
+    id: 'act3-step2', act: 3, phase: 'orchestrator',
+    label: 'Orchestrator Creates Plan',
+    activeComponents: [C.ORCHESTRATOR],
+    messageFlow: { from: C.ORCHESTRATOR, to: C.EXPLORER, type: 'internal', label: 'Deploy Explorer' },
+    message: API.orchestratorResponse,
+    narration: "The orchestrator outputs a plan: (1) Explorer reads the codebase and produces a handoff document, (2) Builder receives the handoff and writes the fix, (3) Reviewer validates with fresh eyes. The orchestrator won't do any coding itself — it manages the sequence. Its context stays small because it receives summaries, not raw content.",
+    stateMutations: { orchestratorState: 'dispatched' },
+    chatUpdate: { role: 'assistant', content: API.orchestratorResponse.content[0].text, agent: 'orchestrator' },
+    contextState: mk(500, 485, 0),
+    activeAgent: 'orchestrator', compactionData: null,
+  },
+  {
+    id: 'act3-step3', act: 3, phase: 'handoff',
+    label: 'Explorer Agent Activated',
+    activeComponents: [C.ORCHESTRATOR, C.EXPLORER],
+    messageFlow: { from: C.ORCHESTRATOR, to: C.EXPLORER, type: 'handoff', label: 'Task handoff' },
+    message: { task: "Find the auth bug. Read all relevant files. Produce a structured handoff document for the Builder.", tools: ['read_file', 'run_tests'], context: 'fresh' },
+    narration: "The Explorer agent starts with a completely fresh context: just the system prompt and the task. 500 + 150 = 650 tokens. The Explorer's system prompt gives it read-only tools (no write_file) and instructions to produce a structured handoff document when done. Each agent is a scoped instance of the same agentic loop mechanism.",
+    stateMutations: { activeAgent: 'explorer', explorerState: 'reading' },
+    chatUpdate: null,
+    contextState: mk(500, 150, 0),
+    activeAgent: 'explorer', compactionData: null,
+  },
+  {
+    id: 'act3-step4', act: 3, phase: 'explorer',
+    label: 'Explorer Reads auth.js',
+    activeComponents: [C.EXPLORER, C.TOOL_READ],
+    messageFlow: { from: C.EXPLORER, to: C.TOOL_READ, type: 'tool_call', label: 'read_file' },
+    message: { file: 'src/auth/auth.js', contents: SIMULATED_CODEBASE['src/auth/auth.js'] },
+    narration: "The Explorer reads auth.js. Its context grows as the file contents are injected as a tool_result. The Explorer is building a picture of the codebase from scratch — no prior context, no shortcuts. This is methodical exploration.",
+    stateMutations: { explorerState: 'reading' },
+    chatUpdate: null,
+    contextState: mk(500, 400, 850),
+    activeAgent: 'explorer', compactionData: null,
+  },
+  {
+    id: 'act3-step5', act: 3, phase: 'explorer',
+    label: 'Explorer Reads tokens.js',
+    activeComponents: [C.EXPLORER, C.TOOL_READ],
+    messageFlow: { from: C.EXPLORER, to: C.TOOL_READ, type: 'tool_call', label: 'read_file' },
+    message: { file: 'src/auth/tokens.js', contents: SIMULATED_CODEBASE['src/auth/tokens.js'] },
+    narration: "The Explorer reads tokens.js — finding the key evidence that expiry is stored in seconds. Context is growing: now at ~2,500 tokens (about 1.25% of the window). This is still small, but the Explorer will read every relevant file to ensure the Builder has complete information.",
+    stateMutations: {},
+    chatUpdate: null,
+    contextState: mk(500, 750, 1550),
+    activeAgent: 'explorer', compactionData: null,
+  },
+  {
+    id: 'act3-step6', act: 3, phase: 'explorer',
+    label: 'Explorer Reads Middleware',
+    activeComponents: [C.EXPLORER, C.TOOL_READ],
+    messageFlow: { from: C.EXPLORER, to: C.TOOL_READ, type: 'tool_call', label: 'read_file' },
+    message: { file: 'src/middleware/authMiddleware.js', contents: SIMULATED_CODEBASE['src/middleware/authMiddleware.js'] },
+    narration: "The Explorer reads authMiddleware.js to understand how validateToken is called in production. Context at ~4,800 tokens (~2.4%). The Explorer is being thorough — understanding the full blast radius of the bug before writing its findings.",
+    stateMutations: {},
+    chatUpdate: null,
+    contextState: mk(500, 1200, 3100),
+    activeAgent: 'explorer', compactionData: null,
+  },
+  {
+    id: 'act3-step7', act: 3, phase: 'explorer',
+    label: 'Explorer Reads Routes + Tests',
+    activeComponents: [C.EXPLORER, C.TOOL_READ],
+    messageFlow: { from: C.EXPLORER, to: C.TOOL_READ, type: 'tool_call', label: 'read_file + run_tests' },
+    message: { files: ['src/routes/userRoutes.js', 'tests/auth.test.js'], testResult: 'FAIL — 1 failing' },
+    narration: "The Explorer reads the routes file and the test suite, then runs the tests. It's building a complete picture: which endpoints are broken, what the tests currently show, what the failure signature is. Explorer's context is now at ~85,000 tokens — it has read everything relevant and is nearly full.",
+    stateMutations: { explorerState: 'summarizing' },
+    chatUpdate: null,
+    contextState: mk(500, 24000, 61500),
+    activeAgent: 'explorer', compactionData: null,
+  },
+  {
+    id: 'act3-step8', act: 3, phase: 'explorer',
+    label: 'Explorer Produces Handoff Document',
+    activeComponents: [C.EXPLORER],
+    messageFlow: { from: C.EXPLORER, to: C.BUILDER, type: 'handoff', label: 'Handoff doc' },
+    message: API.explorerHandoff,
+    narration: "The Explorer's final action: produce a structured handoff document. It compresses ~85,000 tokens of exploration into ~300 tokens of precisely what the Builder needs: file location, the exact bug, the evidence, the fix approach, the affected test. Everything else — the dead ends, the file navigation, the verbose tool output — is discarded. The Builder will never see the Explorer's raw context.",
+    stateMutations: { explorerState: 'done', activeAgent: 'builder' },
+    chatUpdate: null,
+    contextState: mk(500, 24000, 61500),
+    activeAgent: 'explorer', compactionData: null,
+  },
+  {
+    id: 'act3-step9', act: 3, phase: 'handoff',
+    label: 'Builder Starts Fresh — 800 Tokens',
+    activeComponents: [C.EXPLORER, C.BUILDER],
+    messageFlow: { from: C.EXPLORER, to: C.BUILDER, type: 'handoff', label: 'Handoff received' },
+    message: API.explorerHandoff,
+    narration: "The Builder agent receives the handoff document and starts with a fresh context: system prompt (500) + task (50) + handoff document (312) = ~862 tokens. The Builder has almost its entire context window free for precise construction work. Compare: Explorer ended at 85,000 tokens; Builder starts at 862. This is context sharding — dividing cognitive labor to manage context pressure.",
+    stateMutations: { builderState: 'building', explorerState: 'done' },
+    chatUpdate: null,
+    contextState: mk(500, 362, 0),
+    activeAgent: 'builder', compactionData: null,
+  },
+  {
+    id: 'act3-step10', act: 3, phase: 'builder',
+    label: 'Builder Writes the Fix',
+    activeComponents: [C.BUILDER, C.TOOL_WRITE],
+    messageFlow: { from: C.BUILDER, to: C.TOOL_WRITE, type: 'tool_call', label: 'write_file' },
+    message: { file: 'src/auth/auth.js', change: 'token.expiry < Date.now() → token.expiry * 1000 < Date.now()' },
+    narration: "The Builder uses the Explorer's precise instructions to write the fix directly. It doesn't need to explore — the handoff told it exactly which file, which line, and what change to make. Context barely grows. This is the power of role separation: the Builder does precision work with focused context.",
+    stateMutations: { builderState: 'verifying' },
+    chatUpdate: null,
+    contextState: mk(500, 800, 0),
+    activeAgent: 'builder', compactionData: null,
+  },
+  {
+    id: 'act3-step11', act: 3, phase: 'builder',
+    label: 'Builder Runs Tests — All Pass',
+    activeComponents: [C.BUILDER, C.TOOL_TESTS],
+    messageFlow: { from: C.BUILDER, to: C.TOOL_TESTS, type: 'tool_call', label: 'run_tests' },
+    message: { result: 'PASS — 4/4 tests passing' },
+    narration: "Tests pass. The Builder confirms the fix works. Its context is still only ~2,400 tokens — tiny compared to the Explorer. The Builder is ready to produce its output: the patch and the test results, formatted as a handoff for the Reviewer.",
+    stateMutations: { builderState: 'done' },
+    chatUpdate: null,
+    contextState: mk(500, 800, 1100),
+    activeAgent: 'builder', compactionData: null,
+  },
+  {
+    id: 'act3-step12', act: 3, phase: 'handoff',
+    label: 'Builder Hands Off to Reviewer',
+    activeComponents: [C.BUILDER, C.REVIEWER],
+    messageFlow: { from: C.BUILDER, to: C.REVIEWER, type: 'handoff', label: 'Patch review' },
+    message: { patch: 'auth.js line 23: seconds→ms fix', testResults: 'PASS 4/4', context: 'fresh' },
+    narration: "The Builder packages its output — the patch diff and test results — and passes it to the Reviewer. The Reviewer starts with a completely fresh context. No attachment to the Builder's decisions. No accumulated reasoning. Just fresh eyes evaluating the output on its merits.",
+    stateMutations: { reviewerState: 'reviewing', activeAgent: 'reviewer' },
+    chatUpdate: null,
+    contextState: mk(500, 280, 0),
+    activeAgent: 'reviewer', compactionData: null,
+  },
+  {
+    id: 'act3-step13', act: 3, phase: 'reviewer',
+    label: 'Reviewer Evaluates the Patch',
+    activeComponents: [C.REVIEWER, C.TOOL_READ],
+    messageFlow: { from: C.REVIEWER, to: C.TOOL_READ, type: 'tool_call', label: 'read_file' },
+    message: { evaluation: 'Fix is correct. But tests/auth.test.js also has a flawed test fixture.' },
+    narration: "The Reviewer reads the test file and catches something: the \"should reject an expired token\" test was passing for the wrong reason. Its fixture uses the same seconds format correctly, but the test logic was relying on the bug to make expired tokens appear expired. The Reviewer flags this — the test passes after the fix but could be more explicit.",
+    stateMutations: { reviewerState: 'reviewing' },
+    chatUpdate: null,
+    contextState: mk(500, 500, 900),
+    activeAgent: 'reviewer', compactionData: null,
+  },
+  {
+    id: 'act3-step14', act: 3, phase: 'reviewer',
+    label: 'Reviewer Returns Notes to Builder',
+    activeComponents: [C.REVIEWER, C.BUILDER],
+    messageFlow: { from: C.REVIEWER, to: C.BUILDER, type: 'handoff', label: 'Review notes' },
+    message: { verdict: 'APPROVE WITH NOTES', notes: 'Fix is correct. Recommend adding explicit comment to test explaining the seconds/ms distinction.' },
+    stateMutations: { reviewerState: 'done', builderState: 'revising', activeAgent: 'builder' },
+    narration: "The Reviewer approves the fix but sends notes back: the test could be more explicit. This is the fresh-context critique value — the Reviewer wasn't invested in the Builder's choices, so it evaluated the output cleanly. The Builder will make a small clarifying update.",
+    chatUpdate: null,
+    contextState: mk(500, 500, 900),
+    activeAgent: 'reviewer', compactionData: null,
+  },
+  {
+    id: 'act3-step15', act: 3, phase: 'builder',
+    label: 'Builder Updates Test Comment',
+    activeComponents: [C.BUILDER, C.TOOL_WRITE],
+    messageFlow: { from: C.BUILDER, to: C.TOOL_WRITE, type: 'tool_call', label: 'write_file' },
+    message: { file: 'tests/auth.test.js', change: 'Added clarifying comment about seconds vs milliseconds' },
+    narration: "The Builder adds a clarifying comment to the test. Task complete. Five agents (user, orchestrator, explorer, builder, reviewer), each with focused context, each doing one thing well. The total work was the same as Act 2 — but no single agent was overwhelmed.",
+    stateMutations: { builderState: 'done', systemPhase: 'idle' },
+    chatUpdate: null,
+    contextState: mk(500, 900, 1100),
+    activeAgent: 'builder', compactionData: null,
+  },
+  {
+    id: 'act3-step16', act: 3, phase: 'insight',
+    label: 'Act 3 Summary — Context Sharding',
+    activeComponents: [C.ORCHESTRATOR, C.EXPLORER, C.BUILDER, C.REVIEWER],
+    messageFlow: null,
+    message: { explorer_peak: '86,000 tokens (43%)', builder_start: '862 tokens (0.4%)', handoff_size: '312 tokens' },
+    narration: "The Explorer used 86,000 tokens understanding the codebase. The Builder received 312 tokens and had 99.6% of its context free. Each agent was doing one thing, with the right amount of information. No agent was overwhelmed. This is context sharding — you get scale by dividing the problem, not by giving one agent infinite memory.",
+    stateMutations: { activeAgent: null },
+    chatUpdate: null,
+    contextState: mk(500, 900, 1100),
+    activeAgent: null, compactionData: null,
+  },
+
+  // ===========================================================================
+  // ACT 4 — Compaction (11 steps)
+  // ===========================================================================
+
+  {
+    id: 'act4-step1', act: 4, phase: 'setup',
+    label: 'Agentic Loop Resumes',
+    activeComponents: [C.HARNESS, C.TOOL_READ, C.TOOL_TESTS, C.TOOL_WRITE],
+    messageFlow: null,
+    message: null,
+    narration: "Back to the single-agent agentic loop — but now the task is larger. The codebase has more files to explore, and the agent needs to do a thorough investigation. The harness has a critical addition: context window monitoring. When usage exceeds 70%, compaction will be triggered automatically.",
+    stateMutations: { systemPhase: 'processing', harnessState: 'building_request', compactionState: 'idle' },
+    chatUpdate: { role: 'user', content: "The authentication system needs a comprehensive audit. Find all bugs and security issues, then fix them." },
+    contextState: mk(500, 150, 0),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step2', act: 4, phase: 'loop_run',
+    label: 'Reading Files — Context Growing',
+    activeComponents: [C.HARNESS, C.TOOL_READ],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_READ, type: 'tool_call', label: 'read_file ×4' },
+    message: { filesRead: ['src/auth/auth.js', 'src/auth/tokens.js', 'src/middleware/authMiddleware.js', 'src/routes/userRoutes.js'] },
+    narration: "The agent reads all four source files. Each file adds ~800-1,200 tokens to the messages array. After reading the codebase: system (500) + conversation (12,000) + tool results (28,000) = 40,500 tokens. That's 20% of the context window used, and the agent has only read the source files — not the tests, not the docs.",
+    stateMutations: { harnessState: 'executing_tool' },
+    chatUpdate: null,
+    contextState: mk(500, 12000, 28000),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step3', act: 4, phase: 'loop_run',
+    label: 'More Exploration — Context Approaching Threshold',
+    activeComponents: [C.HARNESS, C.TOOL_READ, C.TOOL_TESTS],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_READ, type: 'tool_call', label: 'read_file + run_tests' },
+    message: { filesRead: ['tests/auth.test.js', 'package.json', 'src/config.js'], testResults: 'FAIL — multiple issues found' },
+    narration: "The agent reads more files and runs the test suite. More tool results accumulate. The harness's token counter is climbing: 65,000 tokens now (32.5%). The agent has found the timestamp bug and several other issues. The loop continues, adding more context with every iteration.",
+    stateMutations: { harnessState: 'injecting_result' },
+    chatUpdate: null,
+    contextState: mk(500, 24000, 41000),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step4', act: 4, phase: 'threshold',
+    label: 'Context Reaches 70% Threshold',
+    activeComponents: [C.HARNESS, C.COMPACTOR],
+    messageFlow: null,
+    message: { tokenCount: 140000, threshold: 70, action: 'COMPACTION TRIGGERED' },
+    narration: "The harness's context monitor fires: 140,000 tokens — 70% of the 200,000-token window. The harness pauses the agentic loop. If it continued without intervention, the context would overflow in a few more iterations, causing an API error. Compaction is the only way to continue.",
+    stateMutations: { harnessState: 'paused', compactionState: 'triggered' },
+    chatUpdate: null,
+    contextState: mk(500, 42500, 97000),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step5', act: 4, phase: 'compaction_trigger',
+    label: 'Compaction Engine Activates',
+    activeComponents: [C.HARNESS, C.COMPACTOR, C.AUDIT_LOG],
+    messageFlow: { from: C.HARNESS, to: C.AUDIT_LOG, type: 'internal', label: 'Save raw context' },
+    message: { rawContextTokens: 140000, action: 'Writing full history to audit log before compaction' },
+    narration: "Before compacting, the harness writes the full raw context to an external audit log. This is the audit log pattern: the compressed context goes forward into the active window, but the raw history is preserved externally for debugging. The audit log grows unboundedly — but the model doesn't read it during normal operation.",
+    stateMutations: { compactionState: 'running' },
+    chatUpdate: null,
+    contextState: mk(500, 42500, 97000),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step6', act: 4, phase: 'compaction_run',
+    label: 'Compaction Prompt Sent to Model',
+    activeComponents: [C.COMPACTOR, C.API],
+    messageFlow: { from: C.COMPACTOR, to: C.API, type: 'api_request', label: 'Summarize' },
+    message: {
+      model: 'claude-sonnet-4-6',
+      messages: [{
+        role: 'user',
+        content: "Below is the full history of an agent working on an authentication audit. Produce a dense summary that captures: what has been done, what was found, what decisions were made, and what still needs to happen. Preserve any specific file paths, line numbers, error messages, or technical details that will be needed to continue.\n\n[FULL 140,000 TOKEN HISTORY]"
+      }]
+    },
+    narration: "The compaction engine sends the full 140,000-token context to the model with explicit instructions: preserve file paths, line numbers, error messages, decisions, open questions. What to discard: exploratory traces, dead ends, raw file contents that were summarized, redundant information. The compaction prompt quality determines the summary quality.",
+    stateMutations: {},
+    chatUpdate: null,
+    contextState: mk(500, 42500, 97000),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step7', act: 4, phase: 'compaction_result',
+    label: 'Summary Returned — 140k → 3.5k Tokens',
+    activeComponents: [C.COMPACTOR, C.HARNESS],
+    messageFlow: { from: C.API, to: C.COMPACTOR, type: 'api_response', label: 'Summary' },
+    message: API.compactionSummary,
+    narration: "The model returns a 287-token summary. The harness replaces the 140,000-token history with this summary. Context drops from 140,000 to 3,500 tokens — a 97.5% reduction. The loop can now continue. But 136,500 tokens of content were just discarded. What was in them?",
+    stateMutations: { compactionState: 'complete', harnessState: 'resuming' },
+    chatUpdate: { type: 'compaction_marker' },
+    contextState: mk(500, 3000, 0),
+    activeAgent: null,
+    compactionData: {
+      before: { tokens: 140000, percent: 70 },
+      after: { tokens: 3500, percent: 1.75 },
+      lost: API.whatWasLost,
+    }
+  },
+  {
+    id: 'act4-step8', act: 4, phase: 'what_was_lost',
+    label: 'What Was Lost in Compaction',
+    activeComponents: [C.COMPACTOR],
+    messageFlow: null,
+    message: API.whatWasLost,
+    narration: "Three items from the raw context did not survive compaction. The verbose middleware trace — low risk, just noise. The routes investigation notes — low risk, already resolved. But the third item: a TODO comment in auth.js about unimplemented refresh token rotation. The model judged it a future concern, not relevant to the current task. That judgment may be wrong.",
+    stateMutations: { compactionState: 'idle' },
+    chatUpdate: null,
+    contextState: mk(500, 3000, 0),
+    activeAgent: null,
+    compactionData: {
+      before: { tokens: 140000, percent: 70 },
+      after: { tokens: 3500, percent: 1.75 },
+      lost: API.whatWasLost,
+    }
+  },
+  {
+    id: 'act4-step9', act: 4, phase: 'loop_resume',
+    label: 'Loop Resumes — Fresh Context',
+    activeComponents: [C.HARNESS, C.TOOL_WRITE],
+    messageFlow: { from: C.HARNESS, to: C.TOOL_WRITE, type: 'tool_call', label: 'write_file' },
+    message: { action: 'Applying the timestamp fix from compacted summary', file: 'src/auth/auth.js' },
+    narration: "The loop resumes from the compacted summary. The agent writes the timestamp fix and continues working. From its perspective, the history is intact — it can see what was decided. What it can't see is the refresh token TODO that was compacted away. The agent doesn't know what it doesn't know.",
+    stateMutations: { harnessState: 'executing_tool', compactionState: 'idle' },
+    chatUpdate: null,
+    contextState: mk(500, 3500, 400),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step10', act: 4, phase: 'audit_log',
+    label: 'The Audit Log Pattern',
+    activeComponents: [C.AUDIT_LOG],
+    messageFlow: null,
+    message: { pattern: 'Audit Log', description: 'Full raw history preserved externally, never compacted, available for investigation' },
+    narration: "The audit log contains the complete uncompressed history — including the refresh token TODO. The model doesn't read the audit log during normal operation. But if something goes wrong downstream, an engineer can retrieve the raw history and find the information that was compacted away. The audit log is the safety net that compaction requires.",
+    stateMutations: {},
+    chatUpdate: null,
+    contextState: mk(500, 3500, 400),
+    activeAgent: null, compactionData: null,
+  },
+  {
+    id: 'act4-step11', act: 4, phase: 'insight',
+    label: 'Act 4 Summary — The Necessary Tradeoff',
+    activeComponents: [C.HARNESS, C.COMPACTOR, C.AUDIT_LOG],
+    messageFlow: null,
+    message: null,
+    narration: "Compaction let this agent run three times longer than it could have otherwise. The timestamp bug was found and fixed. But the refresh token TODO — a real security issue — was compacted away. The model made a reasonable judgment: it seemed like a future concern. It was wrong. Compaction is necessary. But every compaction is a bet. The audit log is how you hedge it.",
+    stateMutations: { systemPhase: 'idle', harnessState: 'idle' },
+    chatUpdate: null,
+    contextState: mk(500, 3500, 400),
+    activeAgent: null, compactionData: null,
+  },
+];
+
+// ============================================================================
+// 7. STEP INDEX HELPERS
+// ============================================================================
+
+const ACT_OFFSETS = {};
+const ACT_LENGTHS = {};
+[1, 2, 3, 4].forEach(act => {
+  const firstIdx = STEPS.findIndex(s => s.act === act);
+  const count    = STEPS.filter(s => s.act === act).length;
+  ACT_OFFSETS[act] = firstIdx;
+  ACT_LENGTHS[act] = count;
+});
+
+// ============================================================================
+// 8. INITIAL STATE
+// ============================================================================
+
+const INITIAL_STATE = {
+  systemPhase:      'idle',
+  harnessState:     'idle',
+  apiCallCount:     0,
+  loopIteration:    0,
+  currentTool:      null,
+  activeAgent:      null,
+  orchestratorState:'idle',
+  explorerState:    'idle',
+  builderState:     'idle',
+  reviewerState:    'idle',
+  compactionState:  'idle',
+};
+
+// ============================================================================
+// 9. useSimulation HOOK
+// ============================================================================
+
+function useSimulation() {
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [currentAct, setCurrentAct]             = useState(1);
+  const [isPlaying, setIsPlaying]               = useState(false);
+  const [playSpeed, setPlaySpeed]               = useState(2000);
+  const [conversationHistory, setConversationHistory] = useState([]);
+  const [messageLog, setMessageLog]             = useState([]);
+  const [componentStates, setComponentStates]   = useState({ ...INITIAL_STATE });
+
+  const intervalRef = useRef(null);
+
+  const currentStep   = STEPS[currentStepIndex] || STEPS[0];
+  const actSteps      = STEPS.filter(s => s.act === currentAct);
+  const actStepIndex  = currentStepIndex - (ACT_OFFSETS[currentAct] ?? 0);
+  const totalSteps    = STEPS.length;
+  const totalActSteps = ACT_LENGTHS[currentAct] ?? 0;
+
+  const activeComponents = currentStep.activeComponents || [];
+  const messageFlow      = currentStep.messageFlow || null;
+  const contextState     = currentStep.contextState || { systemPromptTokens: 500, conversationTokens: 0, toolResultTokens: 0, totalTokens: 500, percentUsed: 0.25, breakdown: [] };
+
+  const computeStateAtStep = useCallback((targetIndex) => {
+    const state = { ...INITIAL_STATE };
+    for (let i = 0; i <= targetIndex; i++) {
+      const step = STEPS[i];
+      if (step && step.stateMutations) Object.assign(state, step.stateMutations);
+    }
+    return state;
+  }, []);
+
+  const computeConversationAtStep = useCallback((targetIndex) => {
+    const history = [];
+    for (let i = 0; i <= targetIndex; i++) {
+      const step = STEPS[i];
+      if (step && step.chatUpdate) history.push({ ...step.chatUpdate, stepId: step.id });
+    }
+    return history;
+  }, []);
+
+  const computeMessageLogAtStep = useCallback((targetIndex) => {
+    const log = [];
+    for (let i = 0; i <= targetIndex; i++) {
+      const step = STEPS[i];
+      if (step && step.message && step.messageFlow) {
+        log.push({
+          stepId: step.id, act: step.act, phase: step.phase,
+          label: step.label, flow: step.messageFlow,
+          payload: step.message, timestamp: i,
+          activeAgent: step.activeAgent,
+        });
+      }
+    }
+    return log;
+  }, []);
+
+  const goToStep = useCallback((index) => {
+    const clamped = Math.max(0, Math.min(index, STEPS.length - 1));
+    const step    = STEPS[clamped];
+    setCurrentStepIndex(clamped);
+    setCurrentAct(step.act);
+    setComponentStates(computeStateAtStep(clamped));
+    setConversationHistory(computeConversationAtStep(clamped));
+    setMessageLog(computeMessageLogAtStep(clamped));
+  }, [computeStateAtStep, computeConversationAtStep, computeMessageLogAtStep]);
+
+  const next = useCallback(() => {
+    if (currentStepIndex < STEPS.length - 1) goToStep(currentStepIndex + 1);
+    else setIsPlaying(false);
+  }, [currentStepIndex, goToStep]);
+
+  const prev = useCallback(() => {
+    if (currentStepIndex > 0) goToStep(currentStepIndex - 1);
+  }, [currentStepIndex, goToStep]);
+
+  const goToAct = useCallback((act) => {
+    const offset = ACT_OFFSETS[act];
+    if (offset !== undefined) goToStep(offset);
+  }, [goToStep]);
+
+  const play        = useCallback(() => setIsPlaying(true), []);
+  const pause       = useCallback(() => setIsPlaying(false), []);
+  const togglePlay  = useCallback(() => setIsPlaying(p => !p), []);
+  const reset       = useCallback(() => { setIsPlaying(false); goToStep(0); }, [goToStep]);
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setCurrentStepIndex(prev => {
+          const nextIdx = prev + 1;
+          if (nextIdx >= STEPS.length) { setIsPlaying(false); return prev; }
+          const step = STEPS[nextIdx];
+          setCurrentAct(step.act);
+          setComponentStates(computeStateAtStep(nextIdx));
+          setConversationHistory(computeConversationAtStep(nextIdx));
+          setMessageLog(computeMessageLogAtStep(nextIdx));
+          return nextIdx;
+        });
+      }, playSpeed);
+    }
+    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
+  }, [isPlaying, playSpeed, computeStateAtStep, computeConversationAtStep, computeMessageLogAtStep]);
+
+  return {
+    state: componentStates, currentStep, currentStepIndex, currentAct,
+    actStepIndex, totalActSteps, steps: STEPS, actSteps, totalSteps,
+    next, prev, play, pause, togglePlay, goToAct, goToStep, reset,
+    isPlaying, playSpeed, setPlaySpeed,
+    conversationHistory, messageLog,
+    activeComponents, messageFlow, componentStates, contextState,
+    actMetadata: ACT_METADATA, actOffsets: ACT_OFFSETS, actLengths: ACT_LENGTHS,
+    simulatedCodebase: SIMULATED_CODEBASE, toolDefinitions: TOOL_DEFINITIONS,
+  };
+}
+// ============================================================================
+// SECTION 6: ARCHITECTURE DIAGRAMS
+// Agentic AI Glass Box Demo
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// SVG layout constants per act
+// ---------------------------------------------------------------------------
+
+// Act 1: Simple linear [User] → [API/Model] → [User]
+const ACT1_RECTS = {
+  [C.USER]:   { x: 60,  y: 160, w: 120, h: 60, label: 'User', colorKey: 'user' },
+  [C.HARNESS]:{ x: 250, y: 160, w: 120, h: 60, label: 'Harness', colorKey: 'harness' },
+  [C.API]:    { x: 440, y: 160, w: 120, h: 60, label: 'API / Model', colorKey: 'genai' },
+};
+
+const ACT1_LINES = [
+  { id: 'u-h',  x1: 180, y1: 190, x2: 250, y2: 190 },
+  { id: 'h-a',  x1: 370, y1: 190, x2: 440, y2: 190 },
+  { id: 'a-h',  x1: 440, y1: 210, x2: 370, y2: 210 },
+  { id: 'h-u2', x1: 250, y1: 210, x2: 180, y2: 210 },
+];
+
+const ACT1_PATHS = {
+  'req-flow':  'M 180 190 L 440 190',
+  'resp-flow': 'M 440 210 L 180 210',
+};
+
+// Act 2: Feedback loop — Harness → API/Model → (stop_reason?) → Tool Dispatch → Tools → Harness
+const ACT2_RECTS = {
+  [C.HARNESS]:    { x: 30,  y: 140, w: 120, h: 56, label: 'Harness', colorKey: 'harness' },
+  [C.API]:        { x: 220, y: 140, w: 140, h: 56, label: 'API / Model', colorKey: 'genai' },
+  'decision':     { x: 420, y: 148, w: 80,  h: 40, label: 'stop_reason?', colorKey: 'genai', isDiamond: true },
+  'dispatch':     { x: 30,  y: 290, w: 120, h: 56, label: 'Tool Dispatch', colorKey: 'harness' },
+  [C.TOOL_READ]:  { x: 220, y: 290, w: 110, h: 48, label: 'read_file', colorKey: 'tools' },
+  [C.TOOL_TESTS]: { x: 350, y: 290, w: 110, h: 48, label: 'run_tests', colorKey: 'tools' },
+  [C.TOOL_WRITE]: { x: 480, y: 290, w: 110, h: 48, label: 'write_file', colorKey: 'tools' },
+};
+
+const ACT2_LINES = [
+  { id: 'h-a',   x1: 150, y1: 168, x2: 220, y2: 168 },
+  { id: 'a-d',   x1: 360, y1: 168, x2: 420, y2: 168 },
+  { id: 'd-dis', x1: 460, y1: 188, x2: 90,  y2: 290, curved: true },
+  { id: 'dis-tr',x1: 150, y1: 318, x2: 220, y2: 318 },
+  { id: 'dis-tt',x1: 150, y1: 318, x2: 350, y2: 318 },
+  { id: 'dis-tw',x1: 150, y1: 318, x2: 480, y2: 318 },
+  { id: 'tools-h',x1: 90, y1: 290, x2: 90,  y2: 196, curved: true },
+];
+
+const ACT2_PATHS = {
+  'send-req':  'M 150 165 L 360 165',
+  'get-resp':  'M 360 175 L 150 175',
+  'to-tool':   'M 460 185 C 520 240 20 240 90 290',
+  'tool-back': 'M 90 290 C 20 240 20 180 150 175',
+  'dispatch-r':'M 150 315 L 220 315',
+  'dispatch-t':'M 150 315 C 200 315 300 315 350 315',
+  'dispatch-w':'M 150 315 C 200 315 430 315 480 315',
+};
+
+// Act 3: Multi-agent pipeline with orchestrator, explorer, builder, reviewer
+const ACT3_RECTS = {
+  [C.ORCHESTRATOR]: { x: 30,  y: 30,  w: 140, h: 56, label: 'Orchestrator', colorKey: 'agents' },
+  [C.EXPLORER]:     { x: 240, y: 30,  w: 130, h: 56, label: 'Explorer', colorKey: 'agents' },
+  [C.BUILDER]:      { x: 240, y: 160, w: 130, h: 56, label: 'Builder', colorKey: 'agents' },
+  [C.REVIEWER]:     { x: 240, y: 290, w: 130, h: 56, label: 'Reviewer', colorKey: 'agents' },
+  [C.TOOL_READ]:    { x: 430, y: 30,  w: 110, h: 48, label: 'read_file', colorKey: 'tools' },
+  [C.TOOL_WRITE]:   { x: 430, y: 160, w: 110, h: 48, label: 'write_file', colorKey: 'tools' },
+  [C.TOOL_TESTS]:   { x: 430, y: 220, w: 110, h: 48, label: 'run_tests',  colorKey: 'tools' },
+};
+
+const ACT3_LINES = [
+  { id: 'orch-exp',  x1: 170, y1: 58,  x2: 240, y2: 58  },
+  { id: 'exp-bld',  x1: 305, y1: 86,  x2: 305, y2: 160 },
+  { id: 'bld-rev',  x1: 305, y1: 216, x2: 305, y2: 290 },
+  { id: 'rev-bld',  x1: 265, y1: 290, x2: 265, y2: 216 },
+  { id: 'exp-tr',   x1: 370, y1: 54,  x2: 430, y2: 54  },
+  { id: 'bld-tw',   x1: 370, y1: 184, x2: 430, y2: 184 },
+  { id: 'bld-tt',   x1: 370, y1: 195, x2: 430, y2: 244 },
+];
+
+const ACT3_PATHS = {
+  'orch-to-exp':  'M 170 55 L 240 55',
+  'exp-to-bld':   'M 305 86 L 305 160',
+  'bld-to-rev':   'M 305 216 L 305 290',
+  'rev-to-bld':   'M 265 290 L 265 216',
+  'exp-tool':     'M 370 50 L 430 50',
+  'bld-write':    'M 370 182 L 430 182',
+  'bld-tests':    'M 370 195 C 420 195 430 240 430 244',
+};
+
+// Act 4: Agentic loop + Compaction Engine + Audit Log
+const ACT4_RECTS = {
+  [C.HARNESS]:    { x: 30,  y: 140, w: 120, h: 56, label: 'Harness', colorKey: 'harness' },
+  [C.API]:        { x: 220, y: 140, w: 140, h: 56, label: 'API / Model', colorKey: 'genai' },
+  'decision':     { x: 416, y: 148, w: 80,  h: 40, label: 'stop_reason?', colorKey: 'genai', isDiamond: true },
+  'dispatch':     { x: 30,  y: 290, w: 120, h: 56, label: 'Tool Dispatch', colorKey: 'harness' },
+  [C.TOOL_READ]:  { x: 200, y: 290, w: 100, h: 48, label: 'read_file', colorKey: 'tools' },
+  [C.TOOL_TESTS]: { x: 310, y: 290, w: 100, h: 48, label: 'run_tests', colorKey: 'tools' },
+  [C.TOOL_WRITE]: { x: 420, y: 290, w: 100, h: 48, label: 'write_file', colorKey: 'tools' },
+  [C.COMPACTOR]:  { x: 30,  y: 420, w: 150, h: 56, label: 'Compaction Engine', colorKey: 'compaction' },
+  [C.AUDIT_LOG]:  { x: 230, y: 420, w: 130, h: 56, label: 'Audit Log', colorKey: 'agents' },
+};
+
+const ACT4_LINES = [
+  { id: 'h-a',    x1: 150, y1: 168, x2: 220, y2: 168 },
+  { id: 'a-d',    x1: 360, y1: 168, x2: 416, y2: 168 },
+  { id: 'd-dis',  x1: 456, y1: 188, x2: 90,  y2: 290, curved: true },
+  { id: 'dis-tr', x1: 150, y1: 318, x2: 200, y2: 318 },
+  { id: 'dis-tt', x1: 150, y1: 318, x2: 310, y2: 318 },
+  { id: 'dis-tw', x1: 150, y1: 318, x2: 420, y2: 318 },
+  { id: 'tools-h',x1: 90,  y1: 290, x2: 90,  y2: 196, curved: true },
+  { id: 'h-comp', x1: 90,  y1: 196, x2: 105, y2: 420, curved: true },
+  { id: 'comp-al',x1: 180, y1: 448, x2: 230, y2: 448 },
+];
+
+const ACT4_PATHS = {
+  'send-req':  'M 150 165 L 360 165',
+  'get-resp':  'M 360 175 L 150 175',
+  'to-tool':   'M 456 185 C 530 240 20 240 90 290',
+  'tool-back': 'M 90 290 C 20 240 20 180 150 175',
+  'dispatch-r':'M 150 315 L 200 315',
+  'dispatch-t':'M 150 315 C 200 315 280 315 310 315',
+  'dispatch-w':'M 150 315 C 200 315 380 315 420 315',
+  'compact':   'M 90 196 C 70 340 70 400 105 420',
+  'to-audit':  'M 180 448 L 230 448',
+};
+
+// ---------------------------------------------------------------------------
+// CompBox — a labeled rectangle component for SVG diagrams
+// ---------------------------------------------------------------------------
+function CompBox({ rect, active, hidden, stepKey }) {
+  const col = COLORS[rect.colorKey] || COLORS.user;
+  const opacity = hidden ? 0.08 : active ? 1.0 : 0.35;
+  const filterId = `glow-${rect.label.replace(/\s+/g,'-')}-${stepKey}`;
+
+  if (rect.isDiamond) {
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const hw = rect.w / 2;
+    const hh = rect.h / 2;
+    const pts = `${cx},${rect.y} ${rect.x + rect.w},${cy} ${cx},${rect.y + rect.h} ${rect.x},${cy}`;
+    return (
+      <g opacity={opacity}>
+        {active && (
+          <defs>
+            <filter id={filterId} x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+          </defs>
+        )}
+        <polygon
+          points={pts}
+          fill={col.bg}
+          stroke={col.border}
+          strokeWidth={active ? 2 : 1}
+          filter={active ? `url(#${filterId})` : undefined}
+        />
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="9" fill={col.text} fontFamily="monospace">
+          {rect.label}
+        </text>
+      </g>
+    );
+  }
+
+  return (
+    <g opacity={opacity}>
+      {active && (
+        <defs>
+          <filter id={filterId} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="5" result="blur"/>
+            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+          </filter>
+        </defs>
+      )}
+      <rect
+        x={rect.x} y={rect.y} width={rect.w} height={rect.h} rx={6}
+        fill={col.bg}
+        stroke={col.border}
+        strokeWidth={active ? 2 : 1}
+        filter={active ? `url(#${filterId})` : undefined}
+      />
+      <text x={rect.x + rect.w/2} y={rect.y + rect.h/2 + 5} textAnchor="middle" fontSize="11" fill={col.text} fontFamily="monospace" fontWeight={active ? 'bold' : 'normal'}>
+        {rect.label}
+      </text>
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MiniContextMeter — small context bar inside agent boxes (Act 3)
+// ---------------------------------------------------------------------------
+function MiniContextMeter({ x, y, w, h, percent, color }) {
+  const fill = Math.min(100, Math.max(0, percent));
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={2} fill="#0f172a" stroke="#334155" strokeWidth={1}/>
+      <rect x={x} y={y} width={w * fill / 100} height={h} rx={2} fill={color} opacity={0.8}/>
+      <text x={x + w + 4} y={y + h - 1} fontSize="8" fill="#94a3b8" fontFamily="monospace">{fill}%</text>
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FlowPacket — animated dot travelling along an SVG path
+// ---------------------------------------------------------------------------
+function FlowPacket({ pathId, color, duration, delay, stepKey }) {
+  const dotColor = color || '#ffffff';
+  return (
+    <circle r={5} fill={dotColor} opacity={0.9} key={`fp-${pathId}-${stepKey}`}>
+      <animateMotion
+        dur={`${duration || 1.2}s`}
+        begin={`${delay || 0}s`}
+        repeatCount="indefinite"
+        rotate="auto"
+      >
+        <mpath href={`#${pathId}`}/>
+      </animateMotion>
+    </circle>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Act 1 Diagram — simple linear flow
+// ---------------------------------------------------------------------------
+function Act1Diagram({ activeComponents, messageFlow, stepKey }) {
+  const active = new Set(activeComponents || []);
+
+  // Boxes span y=150-210. Request routes above at y=126. Response routes below at y=234.
+  return (
+    <svg viewBox="0 0 640 310" style={{ width: '100%', height: '100%' }}>
+      <defs>
+        <pattern id="dots-a1" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" fill="#1e293b"/>
+        </pattern>
+        {/* api_request packet: Harness right-top → up → across → API left-top */}
+        <path id="harness-to-api-a1" d="M 370 150 L 370 126 L 440 126 L 440 150"/>
+        {/* api_response packet: API left-bottom → down → across → Harness right-bottom */}
+        <path id="api-to-harness-a1" d="M 440 210 L 440 234 L 370 234 L 370 210"/>
+      </defs>
+      <rect width="640" height="310" fill="#0f172a"/>
+      <rect width="640" height="310" fill="url(#dots-a1)"/>
+
+      {/* Request line above boxes */}
+      <path d="M 180 150 L 180 126 L 440 126 L 440 150" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* Harness tap to request line */}
+      <line x1="310" y1="150" x2="310" y2="126" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
+      {/* Arrow: request arrives at API top (pointing down) */}
+      <polygon points="436,150 440,161 444,150" fill="#334155"/>
+
+      {/* Response line below boxes */}
+      <path d="M 440 210 L 440 234 L 180 234 L 180 210" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* Harness tap to response line */}
+      <line x1="310" y1="210" x2="310" y2="234" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
+      {/* Arrow: response arrives at User bottom (pointing up) */}
+      <polygon points="176,210 180,199 184,210" fill="#334155"/>
+
+      {/* Labels */}
+      <text x="310" y="116" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">request →</text>
+      <text x="310" y="250" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
+
+      {/* Component boxes — drawn after lines so they sit on top */}
+      <CompBox rect={{ ...ACT1_RECTS[C.USER],    y: 150 }} active={active.has(C.USER)}    stepKey={stepKey}/>
+      <CompBox rect={{ ...ACT1_RECTS[C.HARNESS], y: 150 }} active={active.has(C.HARNESS)} stepKey={stepKey}/>
+      <CompBox rect={{ ...ACT1_RECTS[C.API],     y: 150 }} active={active.has(C.API)}     stepKey={stepKey}/>
+
+      {/* Animated packets — Harness↔API only (Harness is the intermediary, not User) */}
+      {messageFlow && messageFlow.type === 'api_request' && (
+        <FlowPacket pathId="harness-to-api-a1" color={COLORS.harness.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'api_response' && (
+        <FlowPacket pathId="api-to-harness-a1" color={COLORS.genai.border} stepKey={stepKey}/>
+      )}
+
+      {/* Legend */}
+      <g transform="translate(30, 278)">
+        <rect width="10" height="10" rx="2" fill={COLORS.user.bg} stroke={COLORS.user.border}/>
+        <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">User</text>
+        <rect x="50" width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
+        <text x="64" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Harness</text>
+        <rect x="130" width="10" height="10" rx="2" fill={COLORS.genai.bg} stroke={COLORS.genai.border}/>
+        <text x="144" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">API / Model</text>
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Act 2 Diagram — agentic feedback loop
+// ---------------------------------------------------------------------------
+function Act2Diagram({ activeComponents, messageFlow, stepKey }) {
+  const active = new Set(activeComponents || []);
+  const hasToolFlow = active.has(C.TOOL_READ) || active.has(C.TOOL_TESTS) || active.has(C.TOOL_WRITE);
+
+  return (
+    <svg viewBox="0 0 620 380" style={{ width: '100%', height: '100%' }}>
+      <defs>
+        <pattern id="dots-a2" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" fill="#1e293b"/>
+        </pattern>
+        {/* Request above: Harness right-top → up → across → down to decision top */}
+        <path id="send-req-a2"   d="M 150 140 L 150 115 L 460 115 L 460 148"/>
+        {/* Response below: API right-bottom → down → across → up to Harness right-bottom */}
+        <path id="get-resp-a2"   d="M 360 196 L 360 212 L 150 212 L 150 196"/>
+        <path id="to-tool-a2"    d="M 456 185 C 530 240 20 240 90 290"/>
+        <path id="tool-back-a2"  d="M 90 290 C 20 240 20 212 150 212"/>
+        <path id="dispatch-r-a2" d="M 150 315 L 220 315"/>
+        <path id="dispatch-t-a2" d="M 150 315 C 200 315 300 315 350 315"/>
+        <path id="dispatch-w-a2" d="M 150 315 C 200 315 430 315 480 315"/>
+      </defs>
+      <rect width="620" height="380" fill="#0f172a"/>
+      <rect width="620" height="380" fill="url(#dots-a2)"/>
+
+      {/* Structural lines */}
+      {/* Request above (Harness → API → decision) */}
+      <path d="M 150 140 L 150 115 L 460 115 L 460 148" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* API notch to request line */}
+      <line x1="290" y1="140" x2="290" y2="115" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
+      {/* Response below (API → Harness) */}
+      <path d="M 360 196 L 360 212 L 150 212 L 150 196" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* Tool dispatch loop */}
+      <path d="M 456 188 C 530 240 20 240 90 290" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 90 290 C 20 240 20 212 150 212" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="150" y1="315" x2="220" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="150" y1="315" x2="350" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="150" y1="315" x2="480" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* Boxes */}
+      <CompBox rect={ACT2_RECTS[C.HARNESS]}    active={active.has(C.HARNESS)}    stepKey={stepKey}/>
+      <CompBox rect={ACT2_RECTS[C.API]}         active={active.has(C.API)}         stepKey={stepKey}/>
+      <CompBox rect={ACT2_RECTS['decision']}    active={active.has(C.API)}         stepKey={stepKey}/>
+      <CompBox rect={ACT2_RECTS['dispatch']}    active={hasToolFlow}               stepKey={stepKey}/>
+      <CompBox rect={ACT2_RECTS[C.TOOL_READ]}   active={active.has(C.TOOL_READ)}   stepKey={stepKey}/>
+      <CompBox rect={ACT2_RECTS[C.TOOL_TESTS]}  active={active.has(C.TOOL_TESTS)}  stepKey={stepKey}/>
+      <CompBox rect={ACT2_RECTS[C.TOOL_WRITE]}  active={active.has(C.TOOL_WRITE)}  stepKey={stepKey}/>
+
+      {/* Flow labels */}
+      <text x="255" y="106" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">API call →</text>
+      <text x="255" y="226" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
+      <text x="520" y="238" fontSize="9" fill="#64748b" fontFamily="monospace">tool_use</text>
+      <text x="22"  y="238" fontSize="9" fill="#64748b" fontFamily="monospace">result</text>
+
+      {/* Animated flow packets */}
+      {messageFlow && messageFlow.type === 'api_request' && (
+        <FlowPacket pathId="send-req-a2" color={COLORS.harness.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'api_response' && (
+        <FlowPacket pathId="get-resp-a2" color={COLORS.genai.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'tool_dispatch' && (
+        <FlowPacket pathId="to-tool-a2" color={COLORS.harness.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'tool_result' && (
+        <FlowPacket pathId="tool-back-a2" color={COLORS.tools.border} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_READ) && (
+        <FlowPacket pathId="dispatch-r-a2" color={COLORS.tools.border} duration={0.8} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_TESTS) && (
+        <FlowPacket pathId="dispatch-t-a2" color={COLORS.tools.border} duration={1.0} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_WRITE) && (
+        <FlowPacket pathId="dispatch-w-a2" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
+      )}
+
+      {/* Legend */}
+      <g transform="translate(30, 355)">
+        <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
+        <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Harness</text>
+        <rect x="75" width="10" height="10" rx="2" fill={COLORS.genai.bg} stroke={COLORS.genai.border}/>
+        <text x="89" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">API/Model</text>
+        <rect x="160" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
+        <text x="174" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Tools</text>
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Act 3 Diagram — multi-agent pipeline with mini context meters
+// ---------------------------------------------------------------------------
+function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, activeAgent }) {
+  const active = new Set(activeComponents || []);
+
+  // Per-agent context percents for mini meters
+  const agentPercents = {
+    [C.ORCHESTRATOR]: activeAgent === 'orchestrator' ? (contextState?.percentUsed || 0) : 0,
+    [C.EXPLORER]:     activeAgent === 'explorer'     ? (contextState?.percentUsed || 0) : 0,
+    [C.BUILDER]:      activeAgent === 'builder'      ? (contextState?.percentUsed || 0) : 0,
+    [C.REVIEWER]:     activeAgent === 'reviewer'     ? (contextState?.percentUsed || 0) : 0,
+  };
+
+  return (
+    <svg viewBox="0 0 600 380" style={{ width: '100%', height: '100%' }}>
+      <defs>
+        <pattern id="dots-a3" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" fill="#1e293b"/>
+        </pattern>
+        <path id="orch-to-exp-a3" d="M 170 55 L 240 55"/>
+        <path id="exp-to-bld-a3"  d="M 305 86 L 305 160"/>
+        <path id="bld-to-rev-a3"  d="M 305 216 L 305 290"/>
+        <path id="rev-to-bld-a3"  d="M 265 290 L 265 216"/>
+        <path id="exp-tool-a3"    d="M 370 50 L 430 50"/>
+        <path id="bld-write-a3"   d="M 370 182 L 430 182"/>
+        <path id="bld-tests-a3"   d="M 370 195 C 420 195 430 240 430 244"/>
+      </defs>
+      <rect width="600" height="380" fill="#0f172a"/>
+      <rect width="600" height="380" fill="url(#dots-a3)"/>
+
+      {/* Structural lines */}
+      <line x1="170" y1="58" x2="240" y2="58" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="305" y1="86" x2="305" y2="160" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="305" y1="216" x2="305" y2="290" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="265" y1="290" x2="265" y2="216" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="370" y1="54" x2="430" y2="54" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="370" y1="186" x2="430" y2="186" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 370 198 C 420 198 430 242 430 246" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* Handoff labels */}
+      <text x="205" y="48" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">task</text>
+      <text x="315" y="128" fontSize="8" fill="#64748b" fontFamily="monospace">handoff</text>
+      <text x="315" y="258" fontSize="8" fill="#64748b" fontFamily="monospace">review</text>
+      <text x="225" y="258" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">notes</text>
+
+      {/* Boxes */}
+      <CompBox rect={ACT3_RECTS[C.ORCHESTRATOR]} active={active.has(C.ORCHESTRATOR)} stepKey={stepKey}/>
+      <CompBox rect={ACT3_RECTS[C.EXPLORER]}     active={active.has(C.EXPLORER)}     stepKey={stepKey}/>
+      <CompBox rect={ACT3_RECTS[C.BUILDER]}      active={active.has(C.BUILDER)}      stepKey={stepKey}/>
+      <CompBox rect={ACT3_RECTS[C.REVIEWER]}     active={active.has(C.REVIEWER)}     stepKey={stepKey}/>
+      <CompBox rect={ACT3_RECTS[C.TOOL_READ]}    active={active.has(C.TOOL_READ)}    stepKey={stepKey}/>
+      <CompBox rect={ACT3_RECTS[C.TOOL_WRITE]}   active={active.has(C.TOOL_WRITE)}   stepKey={stepKey}/>
+      <CompBox rect={ACT3_RECTS[C.TOOL_TESTS]}   active={active.has(C.TOOL_TESTS)}   stepKey={stepKey}/>
+
+      {/* Mini context meters for each agent box */}
+      <MiniContextMeter x={242} y={74}  w={90} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.agents.border}/>
+      <MiniContextMeter x={242} y={74}  w={90} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.agents.border}/>
+      <MiniContextMeter x={242} y={204} w={90} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.agents.border}/>
+      <MiniContextMeter x={242} y={334} w={90} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.agents.border}/>
+
+      {/* Animated flow packets */}
+      {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.EXPLORER && (
+        <FlowPacket pathId="orch-to-exp-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.BUILDER && (
+        <FlowPacket pathId="exp-to-bld-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.REVIEWER && (
+        <FlowPacket pathId="bld-to-rev-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'review_notes' && (
+        <FlowPacket pathId="rev-to-bld-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_READ) && (
+        <FlowPacket pathId="exp-tool-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_WRITE) && (
+        <FlowPacket pathId="bld-write-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_TESTS) && (
+        <FlowPacket pathId="bld-tests-a3" color={COLORS.tools.border} duration={1.1} stepKey={stepKey}/>
+      )}
+
+      {/* Legend */}
+      <g transform="translate(30, 355)">
+        <rect width="10" height="10" rx="2" fill={COLORS.agents.bg} stroke={COLORS.agents.border}/>
+        <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Agent</text>
+        <rect x="65" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
+        <text x="79" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Tools</text>
+        <rect x="125" width="14" height="5" rx="2" fill={COLORS.agents.border} opacity="0.7"/>
+        <text x="142" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Context meter</text>
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Act 4 Diagram — agentic loop + compaction engine + audit log
+// ---------------------------------------------------------------------------
+function Act4Diagram({ activeComponents, messageFlow, stepKey }) {
+  const active = new Set(activeComponents || []);
+  const hasToolFlow = active.has(C.TOOL_READ) || active.has(C.TOOL_TESTS) || active.has(C.TOOL_WRITE);
+
+  return (
+    <svg viewBox="0 0 620 500" style={{ width: '100%', height: '100%' }}>
+      <defs>
+        <pattern id="dots-a4" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" fill="#1e293b"/>
+        </pattern>
+        <path id="send-req-a4"   d="M 150 140 L 150 115 L 456 115 L 456 148"/>
+        <path id="get-resp-a4"   d="M 360 196 L 360 212 L 150 212 L 150 196"/>
+        <path id="to-tool-a4"    d="M 456 185 C 530 240 20 240 90 290"/>
+        <path id="tool-back-a4"  d="M 90 290 C 20 240 20 212 150 212"/>
+        <path id="dispatch-r-a4" d="M 150 315 L 200 315"/>
+        <path id="dispatch-t-a4" d="M 150 315 C 200 315 280 315 310 315"/>
+        <path id="dispatch-w-a4" d="M 150 315 C 200 315 380 315 420 315"/>
+        <path id="compact-a4"    d="M 90 196 C 70 340 70 400 105 420"/>
+        <path id="to-audit-a4"   d="M 180 448 L 230 448"/>
+      </defs>
+      <rect width="620" height="500" fill="#0f172a"/>
+      <rect width="620" height="500" fill="url(#dots-a4)"/>
+
+      {/* Structural lines — main loop */}
+      {/* Request above (Harness → API → decision) */}
+      <path d="M 150 140 L 150 115 L 456 115 L 456 148" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* API notch */}
+      <line x1="290" y1="140" x2="290" y2="115" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
+      {/* Response below (API → Harness) */}
+      <path d="M 360 196 L 360 212 L 150 212 L 150 196" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* Tool dispatch loop */}
+      <path d="M 456 188 C 530 240 20 240 90 290" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 90 290 C 20 240 20 212 150 212" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="150" y1="315" x2="200" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="150" y1="315" x2="310" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="150" y1="315" x2="420" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* Compaction lines */}
+      <path d="M 90 196 C 70 340 70 400 105 420" fill="none" stroke={active.has(C.COMPACTOR) ? COLORS.compaction.border : '#334155'} strokeWidth={active.has(C.COMPACTOR) ? 2 : 1} strokeDasharray={active.has(C.COMPACTOR) ? '0' : '4 3'}/>
+      <line x1="180" y1="448" x2="230" y2="448" stroke={active.has(C.AUDIT_LOG) ? COLORS.agents.border : '#334155'} strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* Flow labels */}
+      <text x="255" y="106" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">API call →</text>
+      <text x="255" y="226" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
+
+      {/* 70% threshold label */}
+      <text x="30" y="245" fontSize="8" fill={COLORS.compaction.text} fontFamily="monospace" opacity={active.has(C.COMPACTOR) ? 1 : 0.4}>
+        70% threshold ↑
+      </text>
+
+      {/* Boxes */}
+      <CompBox rect={ACT4_RECTS[C.HARNESS]}    active={active.has(C.HARNESS)}    stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS[C.API]}         active={active.has(C.API)}         stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS['decision']}    active={active.has(C.API)}         stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS['dispatch']}    active={hasToolFlow}               stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS[C.TOOL_READ]}   active={active.has(C.TOOL_READ)}   stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS[C.TOOL_TESTS]}  active={active.has(C.TOOL_TESTS)}  stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS[C.TOOL_WRITE]}  active={active.has(C.TOOL_WRITE)}  stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS[C.COMPACTOR]}   active={active.has(C.COMPACTOR)}   stepKey={stepKey}/>
+      <CompBox rect={ACT4_RECTS[C.AUDIT_LOG]}   active={active.has(C.AUDIT_LOG)}   stepKey={stepKey}/>
+
+      {/* Animated flow packets */}
+      {messageFlow && messageFlow.type === 'api_request' && (
+        <FlowPacket pathId="send-req-a4" color={COLORS.harness.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'api_response' && (
+        <FlowPacket pathId="get-resp-a4" color={COLORS.genai.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'tool_dispatch' && (
+        <FlowPacket pathId="to-tool-a4" color={COLORS.harness.border} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'tool_result' && (
+        <FlowPacket pathId="tool-back-a4" color={COLORS.tools.border} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_READ) && (
+        <FlowPacket pathId="dispatch-r-a4" color={COLORS.tools.border} duration={0.8} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_TESTS) && (
+        <FlowPacket pathId="dispatch-t-a4" color={COLORS.tools.border} duration={1.0} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_WRITE) && (
+        <FlowPacket pathId="dispatch-w-a4" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
+      )}
+      {active.has(C.COMPACTOR) && (
+        <FlowPacket pathId="compact-a4" color={COLORS.compaction.border} duration={1.5} stepKey={stepKey}/>
+      )}
+      {active.has(C.AUDIT_LOG) && (
+        <FlowPacket pathId="to-audit-a4" color={COLORS.agents.border} duration={0.8} stepKey={stepKey}/>
+      )}
+
+      {/* Legend */}
+      <g transform="translate(30, 475)">
+        <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
+        <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Harness</text>
+        <rect x="75" width="10" height="10" rx="2" fill={COLORS.genai.bg} stroke={COLORS.genai.border}/>
+        <text x="89" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">API/Model</text>
+        <rect x="160" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
+        <text x="174" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Tools</text>
+        <rect x="215" width="10" height="10" rx="2" fill={COLORS.compaction.bg} stroke={COLORS.compaction.border}/>
+        <text x="229" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Compaction</text>
+        <rect x="310" width="10" height="10" rx="2" fill={COLORS.agents.bg} stroke={COLORS.agents.border}/>
+        <text x="324" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Storage</text>
+      </g>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main ArchitectureDiagram — switches layout based on currentAct
+// ---------------------------------------------------------------------------
+function ArchitectureDiagram({ currentAct, activeComponents, messageFlow, stepKey, contextState, activeAgent }) {
+  switch (currentAct) {
+    case 1:
+      return <Act1Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
+    case 2:
+      return <Act2Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
+    case 3:
+      return <Act3Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey} contextState={contextState} activeAgent={activeAgent}/>;
+    case 4:
+      return <Act4Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
+    default:
+      return <Act1Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
+  }
+}
+// ============================================================================
+// SECTION 7: PAYLOAD INSPECTOR, CONTEXT WINDOW METER, MESSAGE LOG
+// Agentic AI Glass Box Demo
+// ============================================================================
+
+const MONO_FONT = '"Fira Mono", "Cascadia Code", "JetBrains Mono", monospace';
+
+const SYNTAX = {
+  string:   '#86efac',  // green-300
+  number:   '#93c5fd',  // blue-300
+  boolean:  '#f9a8d4',  // pink-300
+  null_val: '#6b7280',  // gray-500
+  key:      '#fcd34d',  // yellow-300
+  brace:    '#94a3b8',  // slate-400
+  annot:    '#fb923c',  // orange-400 (tool_use)
+  annotGrn: '#34d399',  // green-400 (tool_result)
+};
+
+const PANEL_BG     = '#0f172a';
+const PANEL_BORDER = '#1e293b';
+const PANEL_HEADER = '#1e293b';
+
+// ============================================================================
+// Context Window Meter
+// ============================================================================
+
+function ContextWindowMeter({ contextState, showThreshold, isCompacting, compact }) {
+  if (!contextState) return null;
+  const { systemPromptTokens, conversationTokens, toolResultTokens, totalTokens, percentUsed } = contextState;
+  const pct = Math.min(100, percentUsed || 0);
+
+  const maxTok  = MAX_CONTEXT_TOKENS;
+  const sysPct  = (systemPromptTokens  / maxTok) * 100;
+  const convPct = (conversationTokens  / maxTok) * 100;
+  const toolPct = (toolResultTokens    / maxTok) * 100;
+
+  const isWarning   = pct >= 70;
+  const isDangerous = pct >= 85;
+
+  return (
+    <div style={{ fontFamily: MONO_FONT }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+        <span style={{ fontSize: 11, color: isDangerous ? COLORS.compaction.text : isWarning ? '#fbbf24' : '#6b7280' }}>
+          {totalTokens.toLocaleString()} / {maxTok.toLocaleString()} tokens
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 'bold', color: isDangerous ? COLORS.compaction.text : isWarning ? '#fbbf24' : '#94a3b8' }}>
+          {pct.toFixed(1)}%
+        </span>
+      </div>
+
+      {/* Segmented bar */}
+      <div style={{
+        position: 'relative',
+        height: 16,
+        background: '#1e293b',
+        borderRadius: 8,
+        overflow: 'visible',
+        transition: isCompacting ? 'all 0.8s ease' : 'none',
+      }}>
+        {/* Filled bar */}
+        <div style={{
+          position: 'absolute',
+          left: 0, top: 0, height: '100%',
+          width: `${pct}%`,
+          borderRadius: 8,
+          overflow: 'hidden',
+          display: 'flex',
+          transition: isCompacting ? 'width 1.2s ease' : 'width 0.4s ease',
+        }}>
+          {/* System prompt segment (purple) */}
+          <div style={{ width: `${(sysPct / pct) * 100}%`, background: '#a855f7', flexShrink: 0 }}/>
+          {/* Conversation segment (amber) */}
+          <div style={{ width: `${(convPct / pct) * 100}%`, background: '#f59e0b', flexShrink: 0 }}/>
+          {/* Tool results segment (green) */}
+          <div style={{ width: `${(toolPct / pct) * 100}%`, background: '#10b981', flexShrink: 0 }}/>
+        </div>
+
+        {/* 70% threshold line */}
+        {showThreshold && (
+          <div style={{
+            position: 'absolute',
+            left: '70%',
+            top: -4,
+            bottom: -4,
+            width: 2,
+            background: COLORS.compaction.border,
+            borderRadius: 1,
+            zIndex: 10,
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: -18,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: 8,
+              color: COLORS.compaction.text,
+              whiteSpace: 'nowrap',
+              fontFamily: MONO_FONT,
+            }}>70%</div>
+          </div>
+        )}
+      </div>
+
+      {/* Compact segment legend (token counts inline) */}
+      {!compact && (
+        <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: '#a855f7' }}/>
+            <span style={{ fontSize: 10, color: '#6b7280' }}>System ({systemPromptTokens.toLocaleString()})</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: '#f59e0b' }}/>
+            <span style={{ fontSize: 10, color: '#6b7280' }}>Conversation ({conversationTokens.toLocaleString()})</span>
+          </div>
+          {toolResultTokens > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#10b981' }}/>
+              <span style={{ fontSize: 10, color: '#6b7280' }}>Tools ({toolResultTokens.toLocaleString()})</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Warning */}
+      {isDangerous && !isCompacting && (
+        <div style={{ marginTop: 5, padding: '3px 8px', background: 'rgba(249,115,22,0.1)', border: `1px solid ${COLORS.compaction.border}`, borderRadius: 4, fontSize: 10, color: COLORS.compaction.text }}>
+          ⚠ {pct.toFixed(0)}% — compaction threshold exceeded
+        </div>
+      )}
+      {isWarning && !isDangerous && !isCompacting && (
+        <div style={{ marginTop: 5, padding: '3px 8px', background: 'rgba(245,158,11,0.08)', border: '1px solid #f59e0b', borderRadius: 4, fontSize: 10, color: '#fbbf24' }}>
+          ↑ Approaching 70% threshold
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// JsonNode — recursive JSON renderer with syntax highlighting
+// ============================================================================
+
+function JsonNode({ value, depth, isLast, annotation }) {
+  const [collapsed, setCollapsed] = React.useState(depth > 2);
+  const canCollapse = typeof value === 'object' && value !== null;
+
+  const toggle = (e) => { e.stopPropagation(); setCollapsed(c => !c); };
+  const comma = isLast ? '' : ',';
+
+  if (value === null) return (
+    <span>
+      <span style={{ color: SYNTAX.null_val }}>null</span>{comma}
+    </span>
+  );
+  if (typeof value === 'boolean') return (
+    <span>
+      <span style={{ color: SYNTAX.boolean }}>{value ? 'true' : 'false'}</span>{comma}
+    </span>
+  );
+  if (typeof value === 'number') return (
+    <span>
+      <span style={{ color: SYNTAX.number }}>{value}</span>{comma}
+    </span>
+  );
+  if (typeof value === 'string') {
+    const display = value.length > 120 ? value.slice(0, 120) + '…' : value;
+    return (
+      <span>
+        <span style={{ color: SYNTAX.string }}>"{display}"</span>{comma}
+        {annotation && (
+          <span style={{
+            marginLeft: 8,
+            fontSize: 10,
+            color: annotation.type === 'tool_use' ? SYNTAX.annot : SYNTAX.annotGrn,
+            opacity: 0.9,
+            fontStyle: 'italic',
+          }}>← {annotation.text}</span>
+        )}
+      </span>
+    );
+  }
+  if (Array.isArray(value)) {
+    if (collapsed) return (
+      <span>
+        <span style={{ color: SYNTAX.brace, cursor: 'pointer', userSelect: 'none' }} onClick={toggle}>
+          [{value.length === 0 ? '' : `…${value.length} items`}]
+        </span>{comma}
+      </span>
+    );
+    return (
+      <span>
+        <span style={{ color: SYNTAX.brace, cursor: canCollapse ? 'pointer' : 'default', userSelect: 'none' }} onClick={canCollapse ? toggle : undefined}>[</span>
+        {value.map((item, i) => (
+          <div key={i} style={{ paddingLeft: 16 }}>
+            <JsonNode value={item} depth={depth + 1} isLast={i === value.length - 1}/>
+          </div>
+        ))}
+        <span style={{ color: SYNTAX.brace }}>]</span>{comma}
+      </span>
+    );
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value);
+    if (collapsed) return (
+      <span>
+        <span style={{ color: SYNTAX.brace, cursor: 'pointer', userSelect: 'none' }} onClick={toggle}>
+          {'{'}…{keys.length} keys{'}'}
+        </span>{comma}
+      </span>
+    );
+    return (
+      <span>
+        <span style={{ color: SYNTAX.brace, cursor: 'pointer', userSelect: 'none' }} onClick={toggle}>{'{'}</span>
+        {keys.map((key, i) => {
+          const childVal = value[key];
+          const isToolUse = key === 'type' && childVal === 'tool_use';
+          const isToolRes = key === 'type' && childVal === 'tool_result';
+          const keyAnnot = isToolUse ? { type: 'tool_use', text: 'Model requesting tool call' }
+                         : isToolRes ? { type: 'tool_result', text: 'Injected by harness' }
+                         : null;
+          return (
+            <div key={key} style={{ paddingLeft: 16 }}>
+              <span style={{ color: SYNTAX.key }}>"{key}"</span>
+              <span style={{ color: SYNTAX.brace }}>: </span>
+              <JsonNode value={childVal} depth={depth + 1} isLast={i === keys.length - 1} annotation={keyAnnot}/>
+            </div>
+          );
+        })}
+        <span style={{ color: SYNTAX.brace }}>{'}'}</span>{comma}
+      </span>
+    );
+  }
+  return <span style={{ color: '#94a3b8' }}>{String(value)}</span>;
+}
+
+// ============================================================================
+// PayloadInspector — JSON viewer with token count badge
+// ============================================================================
+
+function PayloadInspector({ message, contextState, activeAgent, currentAct }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    if (message) {
+      navigator.clipboard.writeText(JSON.stringify(message, null, 2)).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const tokens = contextState?.totalTokens;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header — matches PANEL_HEADER_STYLE from app shell */}
+      <div style={{
+        padding: '7px 14px',
+        background: '#11111b',
+        borderBottom: '1px solid #2a2a3c',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: MONO_FONT }}>
+            API Payload
+          </span>
+          {activeAgent && currentAct === 3 && (
+            <span style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              background: COLORS.agents.bg, border: `1px solid ${COLORS.agents.border}`,
+              color: COLORS.agents.text, fontFamily: MONO_FONT,
+            }}>
+              {activeAgent}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {tokens != null && (
+            <span style={{
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: '#1a1a2a',
+              color: '#6b7280',
+              fontFamily: MONO_FONT,
+            }}>
+              {tokens.toLocaleString()} tokens
+            </span>
+          )}
+          <button
+            onClick={handleCopy}
+            style={{
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: copied ? '#065f46' : '#1e293b',
+              border: `1px solid ${copied ? '#10b981' : '#334155'}`,
+              color: copied ? '#34d399' : '#94a3b8',
+              cursor: 'pointer',
+              fontFamily: MONO_FONT,
+              transition: 'all 0.2s',
+            }}
+          >
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '12px 14px',
+        fontSize: 12,
+        fontFamily: MONO_FONT,
+        lineHeight: 1.7,
+      }}>
+        {message ? (
+          <JsonNode value={message} depth={0} isLast={true}/>
+        ) : (
+          <span style={{ color: '#475569', fontStyle: 'italic' }}>No payload for this step</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// WhatWasLostPanel — Act 4 compaction loss visualization
+// ============================================================================
+
+function WhatWasLostPanel({ compactionData }) {
+  if (!compactionData || !compactionData.lost) return null;
+  const { lost } = compactionData;
+
+  return (
+    <div style={{
+      background: PANEL_BG,
+      border: `1px solid ${COLORS.compaction.border}`,
+      borderRadius: 8,
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '8px 14px',
+        background: 'rgba(249,115,22,0.1)',
+        borderBottom: `1px solid ${COLORS.compaction.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <span style={{ fontSize: 14 }}>⚠</span>
+        <span style={{
+          fontSize: 11,
+          color: COLORS.compaction.text,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          fontFamily: MONO_FONT,
+          fontWeight: 'bold',
+        }}>
+          What Was Lost
+        </span>
+        <span style={{
+          marginLeft: 'auto',
+          fontSize: 10,
+          color: '#64748b',
+          fontFamily: MONO_FONT,
+        }}>
+          {lost.length} item{lost.length !== 1 ? 's' : ''} not in summary
+        </span>
+      </div>
+      <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {lost.map((item, i) => (
+          <div key={i} style={{
+            padding: '8px 12px',
+            borderRadius: 6,
+            background: item.flagged ? 'rgba(249,115,22,0.08)' : 'rgba(255,255,255,0.02)',
+            border: `1px solid ${item.flagged ? COLORS.compaction.border : '#1e293b'}`,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <span style={{
+                fontSize: 12,
+                fontFamily: MONO_FONT,
+                fontWeight: 'bold',
+                color: item.flagged ? COLORS.compaction.text : '#cbd5e1',
+              }}>
+                {item.flagged && '⚠ '}{item.title}
+              </span>
+              <span style={{
+                fontSize: 10,
+                padding: '1px 6px',
+                borderRadius: 4,
+                fontFamily: MONO_FONT,
+                background: item.risk === 'high' ? 'rgba(239,68,68,0.15)' : item.risk === 'medium' ? 'rgba(245,158,11,0.15)' : 'rgba(107,114,128,0.15)',
+                color: item.risk === 'high' ? '#f87171' : item.risk === 'medium' ? '#fbbf24' : '#94a3b8',
+              }}>
+                {item.risk} risk
+              </span>
+            </div>
+            <p style={{ fontSize: 11, color: '#64748b', margin: 0, lineHeight: 1.5, fontFamily: MONO_FONT }}>
+              {item.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CompactionDiffView — before/after token comparison
+// ============================================================================
+
+function CompactionDiffView({ compactionData }) {
+  if (!compactionData) return null;
+  const { before, after } = compactionData;
+  if (!before || !after) return null;
+
+  const reduction = Math.round((1 - after.tokens / before.tokens) * 100);
+
+  return (
+    <div style={{
+      background: PANEL_BG,
+      border: `1px solid ${PANEL_BORDER}`,
+      borderRadius: 8,
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '8px 14px',
+        background: PANEL_HEADER,
+        borderBottom: `1px solid ${PANEL_BORDER}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: MONO_FONT }}>
+          Compaction Result
+        </span>
+        <span style={{
+          marginLeft: 'auto',
+          fontSize: 11,
+          color: '#34d399',
+          fontFamily: MONO_FONT,
+          fontWeight: 'bold',
+        }}>
+          ↓ {reduction}% reduction
+        </span>
+      </div>
+      <div style={{ padding: '12px 14px', display: 'flex', gap: 12 }}>
+        {/* Before */}
+        <div style={{ flex: 1, padding: '10px 12px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6 }}>
+          <div style={{ fontSize: 10, color: '#f87171', fontFamily: MONO_FONT, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Before
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f87171', fontFamily: MONO_FONT }}>
+            {before.tokens.toLocaleString()}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', fontFamily: MONO_FONT, marginTop: 4 }}>tokens</div>
+          <div style={{ fontSize: 10, color: '#64748b', fontFamily: MONO_FONT, marginTop: 8 }}>{before.description}</div>
+        </div>
+        {/* Arrow */}
+        <div style={{ display: 'flex', alignItems: 'center', color: COLORS.compaction.text, fontSize: 20 }}>→</div>
+        {/* After */}
+        <div style={{ flex: 1, padding: '10px 12px', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6 }}>
+          <div style={{ fontSize: 10, color: '#34d399', fontFamily: MONO_FONT, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            After
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 'bold', color: '#34d399', fontFamily: MONO_FONT }}>
+            {after.tokens.toLocaleString()}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', fontFamily: MONO_FONT, marginTop: 4 }}>tokens</div>
+          <div style={{ fontSize: 10, color: '#64748b', fontFamily: MONO_FONT, marginTop: 8 }}>{after.description}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// getMessageDisplayInfo helper
+// ============================================================================
+
+function getMessageDisplayInfo(msg) {
+  if (!msg) return { label: 'unknown', color: '#64748b', icon: '?' };
+  switch (msg.type) {
+    case 'api_request':
+      return { label: 'API Request', color: COLORS.harness.border, icon: '→' };
+    case 'api_response':
+      return { label: 'API Response', color: COLORS.genai.border, icon: '←' };
+    case 'tool_dispatch':
+      return { label: 'Tool Dispatch', color: COLORS.harness.border, icon: '⚙' };
+    case 'tool_result':
+      return { label: 'Tool Result', color: COLORS.tools.border, icon: '✓' };
+    case 'handoff':
+      return { label: 'Agent Handoff', color: COLORS.agents.border, icon: '⇒' };
+    case 'compaction':
+      return { label: 'Compaction', color: COLORS.compaction.border, icon: '⌛' };
+    default:
+      return { label: msg.type || 'event', color: '#64748b', icon: '·' };
+  }
+}
+
+// ============================================================================
+// MessageLog — chronological event list
+// ============================================================================
+
+function MessageLog({ messageLog, currentStep }) {
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messageLog?.length]);
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      background: PANEL_BG,
+      border: `1px solid ${PANEL_BORDER}`,
+      borderRadius: 8,
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '8px 14px',
+        background: PANEL_HEADER,
+        borderBottom: `1px solid ${PANEL_BORDER}`,
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: MONO_FONT }}>
+          Event Log
+        </span>
+      </div>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {(!messageLog || messageLog.length === 0) && (
+          <div style={{ padding: '12px 14px', fontSize: 12, color: '#475569', fontFamily: MONO_FONT, fontStyle: 'italic' }}>
+            No events yet
+          </div>
+        )}
+        {(messageLog || []).map((entry, i) => {
+          const info = getMessageDisplayInfo(entry.flow);
+          const isCurrent = i === (messageLog.length - 1);
+          return (
+            <div key={i} style={{
+              padding: '6px 14px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              background: isCurrent ? 'rgba(255,255,255,0.03)' : 'transparent',
+              borderLeft: isCurrent ? `2px solid ${info.color}` : '2px solid transparent',
+            }}>
+              <span style={{ fontSize: 12, color: info.color, fontFamily: MONO_FONT, flexShrink: 0, marginTop: 1 }}>
+                {info.icon}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: isCurrent ? '#e2e8f0' : '#94a3b8', fontFamily: MONO_FONT }}>
+                  {entry.label || info.label}
+                </div>
+                {entry.detail && (
+                  <div style={{ fontSize: 10, color: '#475569', fontFamily: MONO_FONT, marginTop: 2, wordBreak: 'break-word' }}>
+                    {entry.detail}
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 10, color: '#334155', fontFamily: MONO_FONT, flexShrink: 0 }}>
+                step {entry.stepNumber || i + 1}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+// ============================================================================
+// SECTION 8-9: CHAT PANEL, STEP NARRATOR, APPLICATION SHELL
+// Agentic AI Glass Box Demo
+// ============================================================================
+
+const SimulationContext = React.createContext(null);
+
+// ---------------------------------------------------------------------------
+// Shared panel header style — all panels use this for consistent width
+// ---------------------------------------------------------------------------
+const PANEL_HEADER_STYLE = {
+  padding: '7px 14px',
+  background: '#11111b',
+  borderBottom: '1px solid #2a2a3c',
+  fontSize: 11,
+  fontWeight: 600,
+  color: '#6b7280',
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  fontFamily: MONO_FONT,
+  flexShrink: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+};
+
+const PANEL_STYLE = {
+  background: '#11111b',
+  border: '1px solid #2a2a3c',
+  borderRadius: 10,
+  overflow: 'hidden',
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+};
+
+// ---------------------------------------------------------------------------
+// ChatPanel
+// ---------------------------------------------------------------------------
+const AGENT_COLORS = {
+  orchestrator: { border: COLORS.agents.border, bg: COLORS.agents.bg,   text: COLORS.agents.text, label: 'Orchestrator' },
+  explorer:     { border: '#60a5fa',             bg: '#172554',          text: '#93c5fd',          label: 'Explorer' },
+  builder:      { border: '#34d399',             bg: '#052e16',          text: '#86efac',          label: 'Builder' },
+  reviewer:     { border: '#a78bfa',             bg: '#2e1065',          text: '#c4b5fd',          label: 'Reviewer' },
+};
+
+function ToolCallBubble({ call }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{
+      marginTop: 6, padding: '6px 10px',
+      background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.25)',
+      borderRadius: 6, fontFamily: MONO_FONT,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(o => !o)}>
+        <span style={{ fontSize: 12, color: '#f59e0b' }}>⚙</span>
+        <span style={{ fontSize: 12, color: '#fbbf24' }}>tool_use</span>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>·</span>
+        <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 'bold' }}>{call.name}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#64748b' }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && call.input && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(245,158,11,0.15)' }}>
+          <JsonNode value={call.input} depth={0} isLast={true}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ToolResultBubble({ result }) {
+  const [open, setOpen] = React.useState(false);
+  const isError = result.isError;
+  return (
+    <div style={{
+      marginTop: 6, padding: '6px 10px',
+      background: isError ? 'rgba(239,68,68,0.06)' : 'rgba(16,185,129,0.06)',
+      border: `1px solid ${isError ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)'}`,
+      borderRadius: 6, fontFamily: MONO_FONT,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(o => !o)}>
+        <span style={{ fontSize: 12, color: isError ? '#f87171' : '#10b981' }}>{isError ? '✗' : '✓'}</span>
+        <span style={{ fontSize: 12, color: isError ? '#fca5a5' : '#34d399' }}>tool_result</span>
+        {result.tool_use_id && <span style={{ fontSize: 10, color: '#475569' }}>· {result.tool_use_id.slice(-8)}</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#64748b' }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && result.content && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${isError ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'}` }}>
+          <pre style={{ fontSize: 11, color: '#94a3b8', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {typeof result.content === 'string' ? result.content : JSON.stringify(result.content, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatBubble({ msg }) {
+  const isUser = msg.role === 'user';
+  const agentMeta = msg.agent && AGENT_COLORS[msg.agent];
+  let bubbleBg = '#1e293b', bubbleBorder = '#334155';
+  let roleLabel = isUser ? 'user' : 'assistant', roleColor = isUser ? '#94a3b8' : '#c084fc';
+  if (agentMeta) { bubbleBg = agentMeta.bg; bubbleBorder = agentMeta.border; roleLabel = agentMeta.label; roleColor = agentMeta.text; }
+
+  if (msg.isCompactionMarker) {
+    return (
+      <div style={{
+        margin: '10px 0', padding: '8px 14px',
+        background: 'rgba(249,115,22,0.08)', border: `1px solid ${COLORS.compaction.border}`,
+        borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8, fontFamily: MONO_FONT,
+      }}>
+        <span style={{ fontSize: 14 }}>⌛</span>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 'bold', color: COLORS.compaction.text }}>Context Compacted</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{msg.content}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ margin: '5px 0', display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', gap: 8 }}>
+      {!isUser && (
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+          background: agentMeta ? agentMeta.bg : '#1a1a2e',
+          border: `2px solid ${agentMeta ? agentMeta.border : '#a855f7'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, color: agentMeta ? agentMeta.text : '#c084fc',
+        }}>
+          {agentMeta ? roleLabel[0].toUpperCase() : 'C'}
+        </div>
+      )}
+      <div style={{
+        maxWidth: '80%', padding: '8px 12px',
+        borderRadius: isUser ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+        background: isUser ? COLORS.user.bg : bubbleBg,
+        border: `1px solid ${isUser ? COLORS.user.border : bubbleBorder}`,
+        fontSize: 13, color: '#e2e8f0', lineHeight: 1.6,
+        fontFamily: "system-ui, -apple-system, sans-serif",
+      }}>
+        <div style={{ fontSize: 10, color: roleColor, marginBottom: 4, fontFamily: MONO_FONT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {roleLabel}
+        </div>
+        {msg.content && <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>}
+        {msg.codeAttachment && (
+          <div style={{ marginTop: 8, background: '#0b1520', border: '1px solid #1e3a4a', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ padding: '4px 10px', background: '#111e2e', borderBottom: '1px solid #1e3a4a', fontSize: 10, color: '#64748b', fontFamily: MONO_FONT, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>📎</span>
+              <span>{msg.codeAttachment.filename}</span>
+            </div>
+            <pre style={{ margin: 0, padding: '8px 10px', fontSize: 11, color: '#94a3b8', overflowX: 'auto', whiteSpace: 'pre', lineHeight: 1.55 }}>
+              {msg.codeAttachment.code}
+            </pre>
+          </div>
+        )}
+        {Array.isArray(msg.toolCalls)   && msg.toolCalls.map((c, i)   => <ToolCallBubble   key={i} call={c}/>)}
+        {Array.isArray(msg.toolResults) && msg.toolResults.map((r, i) => <ToolResultBubble key={i} result={r}/>)}
+      </div>
+      {isUser && (
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+          background: COLORS.user.bg, border: `2px solid ${COLORS.user.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, color: COLORS.user.text,
+        }}>U</div>
+      )}
+    </div>
+  );
+}
+
+function ChatPanel({ conversationHistory }) {
+  const scrollRef = React.useRef(null);
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [conversationHistory?.length]);
+
+  return (
+    <div style={{ ...PANEL_STYLE, height: '100%' }}>
+      <div style={PANEL_HEADER_STYLE}>Chat</div>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+        {(!conversationHistory || conversationHistory.length === 0) ? (
+          <div style={{ color: '#374151', fontSize: 12, fontStyle: 'italic', fontFamily: MONO_FONT, paddingTop: 8 }}>
+            Conversation will appear here…
+          </div>
+        ) : (
+          (conversationHistory || []).map((msg, i) => <ChatBubble key={i} msg={msg}/>)
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StepNarrator — phase badge, label, narration, act tabs, nav controls at bottom
+// ---------------------------------------------------------------------------
+
+const PHASE_META = {
+  message:            { bg: 'rgba(59,130,246,0.12)',  border: '#3b82f6', text: '#93c5fd' },
+  api_call:           { bg: 'rgba(168,85,247,0.12)',  border: '#a855f7', text: '#c084fc' },
+  api_response:       { bg: 'rgba(168,85,247,0.12)',  border: '#a855f7', text: '#c084fc' },
+  render:             { bg: 'rgba(107,114,128,0.12)', border: '#6b7280', text: '#9ca3af' },
+  insight:            { bg: 'rgba(234,179,8,0.12)',   border: '#eab308', text: '#fde047' },
+  setup:              { bg: 'rgba(245,158,11,0.12)',  border: '#f59e0b', text: '#fbbf24' },
+  tool_execute:       { bg: 'rgba(16,185,129,0.12)',  border: '#10b981', text: '#34d399' },
+  orchestrator:       { bg: 'rgba(59,130,246,0.12)',  border: '#3b82f6', text: '#93c5fd' },
+  handoff:            { bg: 'rgba(99,102,241,0.12)',  border: '#6366f1', text: '#a5b4fc' },
+  explorer:           { bg: 'rgba(59,130,246,0.08)',  border: '#60a5fa', text: '#93c5fd' },
+  builder:            { bg: 'rgba(16,185,129,0.08)',  border: '#34d399', text: '#86efac' },
+  reviewer:           { bg: 'rgba(167,139,250,0.08)', border: '#a78bfa', text: '#c4b5fd' },
+  loop_run:           { bg: 'rgba(245,158,11,0.08)',  border: '#f59e0b', text: '#fbbf24' },
+  threshold:          { bg: 'rgba(249,115,22,0.12)',  border: '#f97316', text: '#fb923c' },
+  compaction_trigger: { bg: 'rgba(249,115,22,0.12)',  border: '#f97316', text: '#fb923c' },
+  compaction_run:     { bg: 'rgba(249,115,22,0.12)',  border: '#f97316', text: '#fb923c' },
+  compaction_result:  { bg: 'rgba(249,115,22,0.12)',  border: '#f97316', text: '#fb923c' },
+  what_was_lost:      { bg: 'rgba(239,68,68,0.08)',   border: '#ef4444', text: '#fca5a5' },
+  loop_resume:        { bg: 'rgba(16,185,129,0.08)',  border: '#10b981', text: '#34d399' },
+  audit_log:          { bg: 'rgba(59,130,246,0.08)',  border: '#3b82f6', text: '#93c5fd' },
+};
+
+const KEY_TERMS = [
+  'tool_use', 'tool_result', 'end_turn', 'stop_reason', 'context window',
+  'harness', 'compaction', 'handoff', 'orchestrator', 'explorer', 'builder',
+  'reviewer', 'messages array', 'API', 'loop', 'token', 'tokens',
+];
+
+function HighlightedNarration({ text }) {
+  if (!text) return null;
+  const sorted = [...KEY_TERMS].sort((a, b) => b.length - a.length);
+  const re = new RegExp(`(${sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  const parts = text.split(re);
+  return (
+    <span>
+      {parts.map((part, i) =>
+        KEY_TERMS.some(kw => kw.toLowerCase() === part.toLowerCase())
+          ? <strong key={i} style={{ color: '#fde047', fontWeight: 600 }}>{part}</strong>
+          : <span key={i}>{part}</span>
+      )}
+    </span>
+  );
+}
+
+function StepNarrator({ sim, onGoToAct }) {
+  const { currentStepIndex, currentAct, isPlaying, playSpeed, next, prev, togglePlay, setPlaySpeed } = sim;
+  const step = STEPS[currentStepIndex];
+  if (!step) return null;
+
+  const phaseStyle = PHASE_META[step.phase] || PHASE_META.message;
+  const actMeta    = ACT_METADATA[step.act];
+  const stepInAct  = step.id.match(/step(\d+)/)?.[1] || '?';
+  const total      = STEPS.length;
+
+  return (
+    <div style={{ ...PANEL_STYLE }}>
+      {/* Act tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #2a2a3c', flexShrink: 0 }}>
+        {[1, 2, 3, 4].map(actNum => {
+          const am = ACT_METADATA[actNum];
+          const isActive = step.act === actNum;
+          return (
+            <button key={actNum} onClick={() => onGoToAct(actNum)} style={{
+              flex: 1, padding: '7px 4px',
+              background: isActive ? 'rgba(255,255,255,0.03)' : 'transparent',
+              border: 'none',
+              borderBottom: isActive ? `2px solid ${am.accentColor}` : '2px solid transparent',
+              color: isActive ? am.accentColor : '#4b5563',
+              cursor: 'pointer', fontSize: 11, fontFamily: MONO_FONT,
+              transition: 'all 0.15s',
+            }}>
+              <div style={{ fontWeight: isActive ? 700 : 400 }}>Act {actNum}</div>
+              <div style={{ fontSize: 9, opacity: 0.75, marginTop: 1 }}>{am.subtitle}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Step label + phase badge */}
+      <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid #1a1a2e', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <span style={{
+            fontSize: 10, padding: '2px 8px', borderRadius: 4, flexShrink: 0,
+            background: phaseStyle.bg, border: `1px solid ${phaseStyle.border}`, color: phaseStyle.text,
+            fontFamily: MONO_FONT, textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>{step.phase}</span>
+          <span style={{ fontSize: 10, color: '#374151', fontFamily: MONO_FONT }}>
+            Act {step.act} · {stepInAct}/{ACT_LENGTHS[step.act]}
+          </span>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', lineHeight: 1.3 }}>
+          {step.label}
+        </div>
+      </div>
+
+      {/* Narration */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
+        <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.75, margin: 0 }}>
+          <HighlightedNarration text={step.narration}/>
+        </p>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 2, background: '#1a1a2e', flexShrink: 0 }}>
+        <div style={{
+          height: '100%', width: `${((currentStepIndex + 1) / total) * 100}%`,
+          background: `linear-gradient(90deg, ${actMeta.accentColor}99, ${actMeta.accentColor})`,
+          transition: 'width 0.3s ease',
+        }}/>
+      </div>
+
+      {/* Nav controls */}
+      <div style={{
+        padding: '10px 14px',
+        borderTop: '1px solid #2a2a3c',
+        display: 'flex', alignItems: 'center', gap: 8,
+        background: '#0f0f1a', flexShrink: 0,
+      }}>
+        <button onClick={prev} disabled={currentStepIndex === 0} style={{
+          padding: '7px 16px', borderRadius: 8,
+          background: '#1a1a2a', border: '1px solid #2a2a3c',
+          color: currentStepIndex === 0 ? '#2a2a3c' : '#94a3b8',
+          fontSize: 13, cursor: currentStepIndex === 0 ? 'not-allowed' : 'pointer',
+          fontFamily: MONO_FONT, transition: 'all 0.15s',
+        }}>← Back</button>
+
+        <button onClick={togglePlay} style={{
+          padding: '7px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13,
+          background: isPlaying ? `${COLORS.compaction.border}22` : `${actMeta.accentColor}22`,
+          border: `1px solid ${isPlaying ? COLORS.compaction.border : actMeta.accentColor}`,
+          color: isPlaying ? COLORS.compaction.text : actMeta.accentColor,
+          cursor: 'pointer', fontFamily: MONO_FONT, minWidth: 100, transition: 'all 0.15s',
+        }}>
+          {isPlaying ? '⏸ Pause' : '▶ Play'}
+        </button>
+
+        <button onClick={next} disabled={currentStepIndex === total - 1} style={{
+          padding: '7px 16px', borderRadius: 8,
+          background: '#1a1a2a', border: '1px solid #2a2a3c',
+          color: currentStepIndex === total - 1 ? '#2a2a3c' : '#94a3b8',
+          fontSize: 13, cursor: currentStepIndex === total - 1 ? 'not-allowed' : 'pointer',
+          fontFamily: MONO_FONT, transition: 'all 0.15s',
+        }}>Next →</button>
+
+        {/* Speed */}
+        <div style={{ display: 'flex', gap: 3, marginLeft: 4 }}>
+          {[0.5, 1, 2].map(s => (
+            <button key={s} onClick={() => setPlaySpeed(s)} style={{
+              padding: '4px 7px', borderRadius: 5, fontSize: 11,
+              background: playSpeed === s ? '#1e3a5f' : 'transparent',
+              border: `1px solid ${playSpeed === s ? '#3b82f6' : '#2a2a3c'}`,
+              color: playSpeed === s ? '#93c5fd' : '#4b5563',
+              cursor: 'pointer', fontFamily: MONO_FONT,
+            }}>{s}x</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ActTransition overlay
+// ---------------------------------------------------------------------------
+function ActTransition({ toAct, visible, onDismiss }) {
+  if (!visible || !toAct) return null;
+  const meta = ACT_METADATA[toAct];
+  if (!meta) return null;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'blur(6px)', cursor: 'pointer',
+    }} onClick={onDismiss}>
+      <div style={{
+        textAlign: 'center', padding: '36px 48px',
+        background: '#0f172a', border: `2px solid ${meta.accentColor}`,
+        borderRadius: 16, maxWidth: 480, boxShadow: `0 0 60px ${meta.accentColor}2a`,
+      }}>
+        <div style={{ fontSize: 11, color: meta.accentColor, fontFamily: MONO_FONT, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Act {toAct}</div>
+        <div style={{ fontSize: 30, fontWeight: 800, color: '#f8fafc', marginBottom: 6 }}>{meta.title}</div>
+        <div style={{ fontSize: 16, color: meta.accentColor, marginBottom: 18, fontStyle: 'italic' }}>{meta.subtitle}</div>
+        <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.7, marginBottom: 16 }}>{meta.description}</div>
+        <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12, color: '#64748b', lineHeight: 1.6, fontStyle: 'italic' }}>
+          <strong style={{ color: '#94a3b8' }}>Watch for: </strong>{meta.watchFor}
+        </div>
+        <div style={{ marginTop: 14, fontSize: 11, color: '#374151', fontFamily: MONO_FONT }}>Click anywhere to continue</div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LandingScreen
+// ---------------------------------------------------------------------------
+function LandingScreen({ onStart, onSkipToAct }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#0f0f1a',
+      fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    }}>
+      {/* Dot grid */}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', opacity: 0.04 }}>
+        <svg width="100%" height="100%">
+          {Array.from({ length: 50 }, (_, i) => Array.from({ length: 30 }, (_, j) => (
+            <circle key={`${i}-${j}`} cx={i * 48 + 24} cy={j * 48 + 24} r="1.5" fill="#fff"/>
+          )))}
+        </svg>
+      </div>
+
+      <div style={{ maxWidth: 560, width: '90%', textAlign: 'center', position: 'relative' }}>
+        {/* Ambient glow */}
+        <div style={{
+          position: 'absolute', width: 400, height: 400, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(168,85,247,0.1) 0%, transparent 70%)',
+          top: -140, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none',
+        }}/>
+
+        {/* Icon */}
+        <div style={{
+          width: 72, height: 72, borderRadius: 18, margin: '0 auto 28px',
+          background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+            <path d="M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
+          </svg>
+        </div>
+
+        <h1 style={{ fontSize: 44, fontWeight: 800, color: '#f1f5f9', margin: '0 0 8px', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+          Agentic AI Glass Box
+        </h1>
+        <p style={{ fontSize: 18, color: '#94a3b8', margin: '0 0 16px', fontStyle: 'italic' }}>
+          How agentic systems actually work — made visible
+        </p>
+        <p style={{ fontSize: 15, color: '#64748b', lineHeight: 1.65, margin: '0 auto 40px', maxWidth: 480 }}>
+          Step through the evolution from a single API call to a multi-agent pipeline.
+          Watch every token, every tool call, every context window fill and compact —
+          four acts that show why agentic AI behaves the way it does.
+        </p>
+
+        {/* Start button */}
+        <button
+          onClick={onStart}
+          style={{
+            padding: '16px 56px', borderRadius: 14,
+            border: '1px solid rgba(168,85,247,0.4)',
+            background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.08))',
+            color: '#c084fc', fontSize: 20, fontWeight: 700, cursor: 'pointer',
+            transition: 'all 0.25s ease', boxShadow: '0 0 40px rgba(168,85,247,0.1)',
+            fontFamily: 'inherit', letterSpacing: '0.02em',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.3), rgba(168,85,247,0.15))'; e.currentTarget.style.boxShadow = '0 0 60px rgba(168,85,247,0.2)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.08))'; e.currentTarget.style.boxShadow = '0 0 40px rgba(168,85,247,0.1)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+        >
+          Start Demo
+        </button>
+
+        {/* Skip to act */}
+        <div style={{ marginTop: 28, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: '#4b5563', fontSize: 13, alignSelf: 'center' }}>Skip to:</span>
+          {[
+            { act: 1, label: 'Traditional GenAI' },
+            { act: 2, label: 'Agentic Loop' },
+            { act: 3, label: 'Multi-Agent' },
+            { act: 4, label: 'Compaction' },
+          ].map(item => (
+            <button key={item.act} onClick={() => onSkipToAct(item.act)} style={{
+              padding: '5px 14px', borderRadius: 8,
+              border: `1px solid ${ACT_METADATA[item.act].accentColor}33`,
+              background: 'transparent', color: '#6b7280', fontSize: 13,
+              cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = ACT_METADATA[item.act].accentColor; e.currentTarget.style.borderColor = ACT_METADATA[item.act].accentColor; e.currentTarget.style.background = `${ACT_METADATA[item.act].accentColor}0d`; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = `${ACT_METADATA[item.act].accentColor}33`; e.currentTarget.style.background = 'transparent'; }}>
+              Act {item.act}: {item.label}
+            </button>
+          ))}
+        </div>
+
+        <p style={{ marginTop: 32, fontSize: 12, color: '#374151' }}>
+          Keyboard: Arrow keys to navigate · 1-4 for acts · P to play/pause · Esc to reset
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HeaderBar — title + act buttons + step counter (no nav controls here)
+// ---------------------------------------------------------------------------
+function HeaderBar({ currentAct, onGoToAct, currentStep }) {
+  const totalSteps = STEPS.length;
+  const pct = ((currentStep + 1) / totalSteps) * 100;
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 16px', background: '#11111b', borderBottom: '1px solid #2a2a3c',
+      }}>
+        {/* Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          </svg>
+          <span style={{ color: '#f1f5f9', fontSize: 15, fontWeight: 700, letterSpacing: '-0.01em' }}>
+            Agentic AI Glass Box Demo
+          </span>
+        </div>
+
+        {/* Act buttons + step counter */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {[1, 2, 3, 4].map(actNum => {
+            const am = ACT_METADATA[actNum];
+            const isActive = currentAct === actNum;
+            return (
+              <button key={actNum} onClick={() => onGoToAct(actNum)} style={{
+                padding: '4px 14px', borderRadius: 6,
+                border: isActive ? `1px solid ${am.accentColor}` : '1px solid transparent',
+                background: isActive ? `${am.accentColor}1a` : 'transparent',
+                color: isActive ? am.accentColor : '#6b7280',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'inherit', transition: 'all 0.15s',
+              }}>{actNum}</button>
+            );
+          })}
+          <span style={{ color: '#4b5563', fontSize: 11, marginLeft: 8, fontFamily: MONO_FONT }}>
+            {currentStep + 1}/{totalSteps}
+          </span>
+        </div>
+      </div>
+      {/* Progress bar */}
+      <div style={{ height: 2, background: '#1a1a2e' }}>
+        <div style={{
+          height: '100%', width: `${pct}%`,
+          background: `linear-gradient(90deg, ${ACT_METADATA[currentAct]?.accentColor || '#a855f7'}, ${ACT_METADATA[currentAct]?.accentColor || '#a855f7'})`,
+          transition: 'width 0.3s ease',
+        }}/>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// App — main layout matching MCP demo structure
+// ---------------------------------------------------------------------------
+function App() {
+  const sim = useSimulation();
+  const { currentStepIndex, currentAct, conversationHistory, messageLog, next, prev, togglePlay, isPlaying, contextState, goToAct, reset } = sim;
+
+  const [started, setStarted]                   = React.useState(false);
+  const [showActTransition, setShowActTransition] = React.useState(null);
+  const prevActRef = React.useRef(null);
+
+  const step = STEPS[currentStepIndex];
+
+  // Act change detection
+  React.useEffect(() => {
+    if (started && prevActRef.current !== null && prevActRef.current !== currentAct) {
+      setShowActTransition(currentAct);
+    }
+    prevActRef.current = currentAct;
+  }, [currentAct, started]);
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    if (!started) return;
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      switch (e.key) {
+        case 'ArrowRight': case ' ': e.preventDefault(); next(); break;
+        case 'ArrowLeft':            e.preventDefault(); prev(); break;
+        case '1': goToAct(1); break;
+        case '2': goToAct(2); break;
+        case '3': goToAct(3); break;
+        case '4': goToAct(4); break;
+        case 'p': case 'P': e.preventDefault(); togglePlay(); break;
+        case 'Escape': e.preventDefault(); reset(); setStarted(false); break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [started, next, prev, goToAct, togglePlay, reset]);
+
+  const handleStart = React.useCallback(() => {
+    setStarted(true);
+    sim.goToStep(0);
+    setShowActTransition(1);
+    prevActRef.current = 1;
+  }, [sim]);
+
+  const handleSkipToAct = React.useCallback((act) => {
+    setStarted(true);
+    goToAct(act);
+    prevActRef.current = act;
+  }, [goToAct]);
+
+  if (!started) {
+    return <LandingScreen onStart={handleStart} onSkipToAct={handleSkipToAct}/>;
+  }
+
+  const showThreshold      = currentAct === 4;
+  const isCompacting       = step?.phase?.includes('compaction') || false;
+  const showCompactionDiff = currentAct === 4 && step?.compactionData?.before;
+  const showWhatWasLost    = step?.phase === 'what_was_lost' && step?.compactionData?.lost;
+
+  // Choose the right inspector panel content
+  const InspectorContent = () => {
+    if (showCompactionDiff) {
+      return (
+        <div style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: 4 }}>
+          <CompactionDiffView compactionData={step.compactionData}/>
+          {showWhatWasLost && <WhatWasLostPanel compactionData={step.compactionData}/>}
+        </div>
+      );
+    }
+    if (showWhatWasLost) {
+      return <WhatWasLostPanel compactionData={step.compactionData}/>;
+    }
+    return (
+      <PayloadInspector
+        message={step?.message || null}
+        contextState={contextState}
+        activeAgent={step?.activeAgent}
+        currentAct={currentAct}
+      />
+    );
+  };
+
+  return (
+    <SimulationContext.Provider value={sim}>
+      {showActTransition && (
+        <ActTransition
+          toAct={showActTransition}
+          visible={true}
+          onDismiss={() => setShowActTransition(null)}
+        />
+      )}
+
+      <div style={{
+        display: 'flex', flexDirection: 'column', height: '100vh',
+        background: '#0f0f1a', color: '#e2e8f0',
+        fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+      }}>
+        <HeaderBar currentAct={currentAct} onGoToAct={goToAct} currentStep={currentStepIndex}/>
+
+        {/* Main content */}
+        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+
+          {/* LEFT: Chat (46%) */}
+          <div style={{ width: '46%', padding: '8px 4px 8px 8px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <ChatPanel conversationHistory={conversationHistory}/>
+          </div>
+
+          {/* RIGHT: Internals (54%) */}
+          <div style={{ width: '54%', display: 'flex', flexDirection: 'column', padding: '8px 8px 8px 4px', gap: 6, minHeight: 0 }}>
+
+            {/* Architecture Diagram */}
+            <div style={{ flex: '4 1 0%', minHeight: 0, overflow: 'hidden', ...PANEL_STYLE }}>
+              <div style={PANEL_HEADER_STYLE}>Architecture</div>
+              {/* position:relative + absolute child ensures SVG fills panel regardless of aspect ratio */}
+              <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#0f172a' }}>
+                <div style={{ position: 'absolute', inset: 0 }}>
+                  <ArchitectureDiagram
+                    currentAct={currentAct}
+                    activeComponents={step?.activeComponents || []}
+                    messageFlow={step?.messageFlow || null}
+                    stepKey={step?.id || 'init'}
+                    contextState={contextState}
+                    activeAgent={step?.activeAgent}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Context Meter — slim strip */}
+            <div style={{ flexShrink: 0, ...PANEL_STYLE }}>
+              <div style={PANEL_HEADER_STYLE}>Context Window</div>
+              <div style={{ padding: '8px 14px 10px' }}>
+                <ContextWindowMeter
+                  contextState={contextState}
+                  showThreshold={showThreshold}
+                  isCompacting={isCompacting}
+                  compact={true}
+                />
+              </div>
+            </div>
+
+            {/* Event Log + Inspector */}
+            <div style={{ flex: '3 1 0%', display: 'flex', gap: 6, minHeight: 0, overflow: 'hidden' }}>
+              <div style={{ width: '38%', minHeight: 0, ...PANEL_STYLE }}>
+                <div style={PANEL_HEADER_STYLE}>Event Log</div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <InnerMessageLog messageLog={messageLog} currentStep={currentStepIndex}/>
+                </div>
+              </div>
+              <div style={{ width: '62%', minHeight: 0, overflow: 'hidden', ...PANEL_STYLE }}>
+                <InspectorContent/>
+              </div>
+            </div>
+
+            {/* Step Narrator with controls at bottom */}
+            <div style={{ flex: '2.5 1 0%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <StepNarrator sim={sim} onGoToAct={goToAct}/>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </SimulationContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// InnerMessageLog — the log rows inside the Event Log panel (no outer wrapper)
+// ---------------------------------------------------------------------------
+function InnerMessageLog({ messageLog, currentStep }) {
+  const scrollRef = React.useRef(null);
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messageLog?.length]);
+
+  const getInfo = (flow) => {
+    if (!flow) return { label: 'event', color: '#64748b', icon: '·' };
+    const map = {
+      api_request:  { label: 'API Request',    color: COLORS.harness.border, icon: '→' },
+      api_response: { label: 'API Response',   color: COLORS.genai.border,   icon: '←' },
+      tool_dispatch:{ label: 'Tool Dispatch',  color: COLORS.harness.border, icon: '⚙' },
+      tool_result:  { label: 'Tool Result',    color: COLORS.tools.border,   icon: '✓' },
+      handoff:      { label: 'Agent Handoff',  color: COLORS.agents.border,  icon: '⇒' },
+      review_notes: { label: 'Review Notes',   color: COLORS.agents.border,  icon: '⇒' },
+      compaction:   { label: 'Compaction',     color: COLORS.compaction.border, icon: '⌛' },
+    };
+    return map[flow.type] || { label: flow.type, color: '#64748b', icon: '·' };
+  };
+
+  return (
+    <div ref={scrollRef} style={{ height: '100%', overflowY: 'auto' }}>
+      {(!messageLog || messageLog.length === 0) && (
+        <div style={{ padding: '12px 14px', fontSize: 12, color: '#374151', fontFamily: MONO_FONT, fontStyle: 'italic' }}>No events yet</div>
+      )}
+      {(messageLog || []).map((entry, i) => {
+        const info = getInfo(entry.flow);
+        const isCurrent = i === (messageLog.length - 1);
+        return (
+          <div key={i} style={{
+            padding: '6px 14px', display: 'flex', alignItems: 'flex-start', gap: 8,
+            background: isCurrent ? 'rgba(255,255,255,0.02)' : 'transparent',
+            borderLeft: `2px solid ${isCurrent ? info.color : 'transparent'}`,
+          }}>
+            <span style={{ fontSize: 12, color: info.color, fontFamily: MONO_FONT, flexShrink: 0, marginTop: 1 }}>{info.icon}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: isCurrent ? '#e2e8f0' : '#6b7280', fontFamily: MONO_FONT }}>{entry.label || info.label}</div>
+              {entry.detail && <div style={{ fontSize: 10, color: '#374151', fontFamily: MONO_FONT, marginTop: 1, wordBreak: 'break-word' }}>{entry.detail}</div>}
+            </div>
+            <span style={{ fontSize: 10, color: '#2a2a3c', fontFamily: MONO_FONT, flexShrink: 0 }}>{i + 1}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mount
+// ---------------------------------------------------------------------------
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,125 +1,97 @@
-# Glass Box Demo Template
+# Agentic AI Glass Box Demo
 
-A template for building interactive, single-file browser demos that make invisible AI mechanisms visible. No build step, no dependencies — open `index.html` and start learning.
+An interactive browser demo that walks through the evolution of agentic AI systems in four acts — from a single API call to a multi-agent pipeline with context compaction.
 
-Each demo is a step-by-step simulation where you watch every API call, every payload, every state change happen in real time. Pause, rewind, and inspect anything.
+## Quick Start
 
-## Getting Started
+Open `index.html` in any modern browser. No install, no build step, no server.
 
-Create a new repo from this template, then follow [`docs/FRAMEWORK.md`](docs/FRAMEWORK.md) to build your first demo.
+## The Four Acts
 
-The `reference/` directory contains a complete working demo (4,400 lines) you can open in a browser and study. It's the source you'll copy reusable components from.
+| Act | Title | What You'll See |
+|-----|-------|----------------|
+| 1 | Traditional GenAI | A single API call with no tools. The model guesses but can't verify. |
+| 2 | The Agentic Loop | Tools are added. The harness loops: call API, execute tool, feed results back. Six API calls, one task. |
+| 3 | Multi-Agent Systems | An orchestrator delegates to Explorer, Builder, and Reviewer. Watch context meters fill and handoffs compress 40,000 tokens into 300. |
+| 4 | Compaction | The context window hits 70%. A compaction engine summarizes 140,000 tokens down to 3,500 — but a critical TODO gets lost. |
 
-### Quick Version
+All four acts use the same scenario: finding and fixing a seconds-vs-milliseconds bug in an authentication module.
 
-1. Define your narrative (what mechanism, how many acts, what scenario)
-2. Scaffold a new `tutorial_<name>/` directory
-3. Copy `src/inspector.js` and `src/app.js` from `reference/example-demo.html` (adapt colors, phase types)
-4. Write `src/simulation.js` (your steps, payloads, narration) and `src/diagrams.js` (your SVG layouts)
-5. Assemble and verify
+## What's On Screen
 
-## How Demos Are Built
+```
++---------------------------+-----------------------------------+
+|                           |        Architecture Diagram       |
+|       Chat Panel          |     (SVG, animated flow dots)     |
+|   (Claude-style bubbles,  +-----------------------------------+
+|    tool calls, agent       |         Context Window Meter      |
+|    labels)                +------------------+----------------+
+|                           |   Event Log      | API Payload    |
+|                           |                  | Inspector      |
++---------------------------+------------------+----------------+
+|                    Step Narrator                               |
+|     (act tabs, narration text, Back / Play / Next controls)   |
++---------------------------------------------------------------+
+```
 
-Every demo follows the same architecture: four JavaScript files concatenated into a single `index.html`.
+## File Structure
 
 ```
 src/
-  simulation.js    Data layer — constants, scenario, pre-built API payloads, step
-                   definitions, and the useSimulation() hook that drives everything
+  simulation.js    Constants, simulated codebase, 49 step definitions,
+                   pre-built API payloads, useSimulation() hook
 
-  diagrams.js      Architecture diagrams — SVG layouts per act, animated flow
-                   packets, component boxes with glow/dim states
+  diagrams.js      4 SVG architecture layouts (one per act), CompBox,
+                   FlowPacket animations, MiniContextMeter
 
-  inspector.js     Developer tools panels — JSON syntax-highlighted payload viewer,
-                   context window meter, message log, compaction diff view
+  inspector.js     JSON syntax highlighter, payload inspector, context
+                   window meter, "What Was Lost" panel, message log
 
-  app.js           Application shell — chat interface, step narrator with playback
-                   controls, landing screen, keyboard shortcuts, main layout
+  app.js           Chat panel, step narrator, landing screen, header bar,
+                   act transitions, keyboard shortcuts, main App layout
+
+docs/
+  content-blueprint.md   The scenario, acts, and narration guide
+  BUILD-SPEC.md          Agent team spec for this demo
+  PLAN.md                Implementation plan
+
+assemble.sh      Concatenates src/ files into index.html
+index.html       The assembled demo (open in browser)
 ```
 
-Assembly is one command:
+## Development
+
+Edit any `.js` file, then reassemble:
 
 ```bash
-./assemble.sh    # → "Assembled: 3438 lines → index.html"
+./assemble.sh
+# → "Assembled: 3438 lines → index.html"
 ```
 
-Edit any `.js` file, run `./assemble.sh`, refresh the browser. That's the entire development loop.
+Refresh the browser. That's it.
 
-### Why Section Files Instead of One Big File?
+### Headless Screenshots
 
-- **Each file is focused.** Change the SVG diagrams without scrolling past 1,400 lines of step definitions.
-- **AI agents can work in parallel.** Each file has clear boundaries — no merge conflicts.
-- **Diffs are readable.** A color change shows up in `src/simulation.js`, not buried in a 3,500-line monolith.
-- **Context windows stay manageable.** No single file exceeds what an AI agent can hold in working memory.
+For visual verification without a display:
 
-## Controls (all demos)
+```bash
+# One-time setup
+npx playwright install-deps chromium
+PLAYWRIGHT_BROWSERS_PATH=/home/dev/.playwright-browsers npx playwright install chromium
 
-| Input | Action |
-|-------|--------|
-| **Next / Back** buttons | Step forward or backward |
-| **Play** button | Auto-advance through steps |
-| Arrow keys | Navigate steps |
-| `1` `2` `3` `4` | Jump to act |
-| `P` | Toggle play/pause |
-| `Esc` | Reset to beginning |
-
-## Template Structure
-
-```
-glassbox/
-+-- README.md                      You are here
-+-- CLAUDE.md                      Project guide for Claude Code (interface contracts, patterns)
-|
-+-- docs/                          Reusable guides
-|   +-- FRAMEWORK.md               Playbook for creating new demos
-|   +-- LESSONS-LEARNED.md         What worked, what failed, rules for next time
-|
-+-- reference/                     Reference implementation
-    +-- README.md                  How to use the reference
-    +-- example-demo.html          A complete working demo to learn from and copy
-    +-- example-build-spec.md      Build spec used to create the example
-    +-- example-architecture.md    Deep dive into patterns and design decisions
+# Take a screenshot
+PLAYWRIGHT_BROWSERS_PATH=/home/dev/.playwright-browsers node /tmp/shot.js
 ```
 
-When you create a demo, add a `tutorial_<name>/` directory:
+## How It Was Built
 
-```
-tutorial_<name>/
-+-- README.md
-+-- src/
-|   +-- simulation.js              Data layer (constants, steps, hook)
-|   +-- diagrams.js                SVG architecture diagrams
-|   +-- inspector.js               Payload inspector + context meter
-|   +-- app.js                     Chat, narrator, app shell
-+-- docs/
-|   +-- BUILD-SPEC.md              Agent team spec for this demo
-|   +-- content-blueprint.md       Scenario, acts, narration guide
-+-- assemble.sh                    Concatenates src/ files into index.html
-+-- index.html                     Assembled output (open in browser)
-```
+This demo was built using a 4-agent parallel team, each writing one section file. The build spec with agent personas and verification checklist is in [`docs/BUILD-SPEC.md`](docs/BUILD-SPEC.md).
 
-## Lessons Learned
+Key takeaway: the section-file approach worked far better than attempting to write the full 3,400-line file monolithically.
 
-Building these demos with AI agent teams produced concrete findings about how to structure large single-file projects for AI-assisted development. The full write-up is in [`docs/LESSONS-LEARNED.md`](docs/LESSONS-LEARNED.md), but the highlights:
+## Building More Demos Like This
 
-- **Section files are non-negotiable.** A single agent cannot reliably produce 3,500+ lines in one pass. Four focused files of 500-1,500 lines each is the sweet spot.
-- **Agents for generation, humans for polish.** Use 2-3 parallel agents to write the initial scaffold. Switch to direct editing for all iterative refinement.
-- **Visual verification from day one.** Set up headless screenshots (Playwright) before writing any UI code.
-- **Explicit interface contracts prevent silent failures.** Document every shared global, every hook return value, every color hex.
-
-## Demos Built With This Template
-
-| Demo | Repo | What It Teaches |
-|------|------|----------------|
-| Agentic AI | *your-org/tutorial_agent* | GenAI → Agentic Loop → Multi-Agent → Compaction |
-| MCP Protocol | *your-org/tutorial_mcp* | MCP boot sequence, tool discovery, chained tool calls |
-
-## Tech Stack
-
-- React 18 + ReactDOM 18 (CDN)
-- Babel Standalone (in-browser JSX transpilation)
-- Tailwind CSS (CDN)
-- Zero build step, zero `node_modules`, zero server
+This repo was created from the [Glass Box template](https://github.com/your-org/glassbox). See the template's `docs/FRAMEWORK.md` for the reusable playbook and `docs/LESSONS-LEARNED.md` for what worked and what didn't.
 
 ## License
 
