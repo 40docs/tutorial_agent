@@ -672,7 +672,7 @@ const STEPS = [
     id: 'act1-step1', act: 1, phase: 'message',
     label: 'User Sends Code + Question',
     activeComponents: [C.USER, C.HARNESS],
-    messageFlow: null,
+    messageFlow: { from: C.USER, to: C.HARNESS, type: 'user_prompt', label: 'User prompt' },
     message: null,
     narration: "The user pastes auth.js and asks: \"Find the bug.\" The harness receives this and prepares an API request. There are no tools declared. No loop. No memory. Just one shot at an answer.",
     stateMutations: { systemPhase: 'processing', harnessState: 'building_request' },

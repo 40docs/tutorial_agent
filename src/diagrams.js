@@ -233,6 +233,8 @@ function Act1Diagram({ activeComponents, messageFlow, stepKey }) {
         <pattern id="dots-a1" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="#1e293b"/>
         </pattern>
+        {/* user_prompt packet: User right-top → up → across → Harness left-top */}
+        <path id="user-to-harness-a1" d="M 180 150 L 180 126 L 250 126 L 250 150"/>
         {/* api_request packet: Harness right-top → up → across → API left-top */}
         <path id="harness-to-api-a1" d="M 370 150 L 370 126 L 440 126 L 440 150"/>
         {/* api_response packet: API left-bottom → down → across → Harness right-bottom */}
@@ -264,7 +266,10 @@ function Act1Diagram({ activeComponents, messageFlow, stepKey }) {
       <CompBox rect={{ ...ACT1_RECTS[C.HARNESS], y: 150 }} active={active.has(C.HARNESS)} stepKey={stepKey}/>
       <CompBox rect={{ ...ACT1_RECTS[C.API],     y: 150 }} active={active.has(C.API)}     stepKey={stepKey}/>
 
-      {/* Animated packets — Harness↔API only (Harness is the intermediary, not User) */}
+      {/* Animated packets */}
+      {messageFlow && messageFlow.type === 'user_prompt' && (
+        <FlowPacket pathId="user-to-harness-a1" color={COLORS.user.border} stepKey={stepKey}/>
+      )}
       {messageFlow && messageFlow.type === 'api_request' && (
         <FlowPacket pathId="harness-to-api-a1" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
