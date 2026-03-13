@@ -38,10 +38,10 @@ const PANEL_STYLE = {
 // ChatPanel
 // ---------------------------------------------------------------------------
 const AGENT_COLORS = {
-  orchestrator: { border: COLORS.agents.border, bg: COLORS.agents.bg,   text: COLORS.agents.text, label: 'Orchestrator' },
-  explorer:     { border: '#60a5fa',             bg: '#172554',          text: '#93c5fd',          label: 'Explorer' },
-  builder:      { border: '#34d399',             bg: '#052e16',          text: '#86efac',          label: 'Builder' },
-  reviewer:     { border: '#a78bfa',             bg: '#2e1065',          text: '#c4b5fd',          label: 'Reviewer' },
+  orchestrator: { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Orchestrator' },
+  explorer:     { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Explorer' },
+  builder:      { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Builder' },
+  reviewer:     { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Reviewer' },
 };
 
 function ToolCallBubble({ call }) {

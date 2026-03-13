@@ -1023,7 +1023,7 @@ const STEPS = [
     message: { task: "Find the auth bug. Read all relevant files. Produce a structured handoff document for the Builder.", tools: ['read_file', 'run_tests'], context: 'fresh' },
     narration: "The Explorer agent starts with a completely fresh context: just the system prompt and the task. 500 + 150 = 650 tokens. The Explorer's system prompt gives it read-only tools (no write_file) and instructions to produce a structured handoff document when done. Each agent is a scoped instance of the same agentic loop mechanism.",
     stateMutations: { activeAgent: 'explorer', explorerState: 'reading' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'explorer', content: "Starting fresh context. Reading authentication-related files to trace the bug." },
     contextState: mk(500, 150, 0),
     activeAgent: 'explorer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 0.33, builder: 0, reviewer: 0 },
@@ -1036,7 +1036,7 @@ const STEPS = [
     message: { file: 'src/auth/auth.js', contents: SIMULATED_CODEBASE['src/auth/auth.js'] },
     narration: "The Explorer reads auth.js. Its context grows as the file contents are injected as a tool_result. The Explorer is building a picture of the codebase from scratch — no prior context, no shortcuts. This is methodical exploration.",
     stateMutations: { explorerState: 'reading' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'explorer', toolCalls: [{ name: 'read_file', input: { path: 'src/auth/auth.js' }, id: 'toolu_exp_01' }] },
     contextState: mk(500, 400, 850),
     activeAgent: 'explorer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 0.88, builder: 0, reviewer: 0 },
@@ -1049,7 +1049,7 @@ const STEPS = [
     message: { file: 'src/auth/tokens.js', contents: SIMULATED_CODEBASE['src/auth/tokens.js'] },
     narration: "The Explorer reads tokens.js — finding the key evidence that expiry is stored in seconds. Context is growing: now at ~2,500 tokens (about 1.25% of the window). This is still small, but the Explorer will read every relevant file to ensure the Builder has complete information.",
     stateMutations: {},
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'explorer', toolCalls: [{ name: 'read_file', input: { path: 'src/auth/tokens.js' }, id: 'toolu_exp_02' }] },
     contextState: mk(500, 750, 1550),
     activeAgent: 'explorer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 1.4, builder: 0, reviewer: 0 },
@@ -1062,7 +1062,7 @@ const STEPS = [
     message: { file: 'src/middleware/authMiddleware.js', contents: SIMULATED_CODEBASE['src/middleware/authMiddleware.js'] },
     narration: "The Explorer reads authMiddleware.js to understand how validateToken is called in production. Context at ~4,800 tokens (~2.4%). The Explorer is being thorough — understanding the full blast radius of the bug before writing its findings.",
     stateMutations: {},
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'explorer', toolCalls: [{ name: 'read_file', input: { path: 'src/middleware/authMiddleware.js' }, id: 'toolu_exp_03' }] },
     contextState: mk(500, 1200, 3100),
     activeAgent: 'explorer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 2.4, builder: 0, reviewer: 0 },
@@ -1075,7 +1075,7 @@ const STEPS = [
     message: { files: ['src/routes/userRoutes.js', 'tests/auth.test.js'], testResult: 'FAIL — 1 failing' },
     narration: "The Explorer reads the routes file and the test suite, then runs the tests. It's building a complete picture: which endpoints are broken, what the tests currently show, what the failure signature is. Explorer's context is now at ~85,000 tokens — it has read everything relevant and is nearly full.",
     stateMutations: { explorerState: 'summarizing' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'explorer', content: "Read routes and test files. Running tests to confirm failure.", toolCalls: [{ name: 'run_tests', input: { target: 'tests/auth.test.js' }, id: 'toolu_exp_04' }] },
     contextState: mk(500, 24000, 61500),
     activeAgent: 'explorer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0, reviewer: 0 },
@@ -1088,7 +1088,7 @@ const STEPS = [
     message: API.explorerHandoff,
     narration: "The Explorer's final action: produce a structured handoff document. It compresses ~85,000 tokens of exploration into ~300 tokens of precisely what the Builder needs: file location, the exact bug, the evidence, the fix approach, the affected test. Everything else — the dead ends, the file navigation, the verbose tool output — is discarded. The Builder will never see the Explorer's raw context.",
     stateMutations: { explorerState: 'done', activeAgent: 'builder' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'explorer', content: "**Handoff to Builder:**\nBug: `src/auth/auth.js` line 23 — `token.expiry` is seconds, `Date.now()` is milliseconds.\nFix: `token.expiry * 1000 < Date.now()`\nTest: `tests/auth.test.js` — currently failing on valid token check." },
     contextState: mk(500, 24000, 61500),
     activeAgent: 'explorer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0, reviewer: 0 },
@@ -1101,7 +1101,7 @@ const STEPS = [
     message: API.explorerHandoff,
     narration: "The Builder agent receives the handoff document and starts with a fresh context: system prompt (500) + task (50) + handoff document (312) = ~862 tokens. The Builder has almost its entire context window free for precise construction work. Compare: Explorer ended at 85,000 tokens; Builder starts at 862. This is context sharding — dividing cognitive labor to manage context pressure.",
     stateMutations: { builderState: 'building', explorerState: 'done' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'builder', content: "Received handoff. Fresh context — 862 tokens. Applying fix to auth.js line 23." },
     contextState: mk(500, 362, 0),
     activeAgent: 'builder', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0.43, reviewer: 0 },
@@ -1114,7 +1114,7 @@ const STEPS = [
     message: { file: 'src/auth/auth.js', change: 'token.expiry < Date.now() → token.expiry * 1000 < Date.now()' },
     narration: "The Builder uses the Explorer's precise instructions to write the fix directly. It doesn't need to explore — the handoff told it exactly which file, which line, and what change to make. Context barely grows. This is the power of role separation: the Builder does precision work with focused context.",
     stateMutations: { builderState: 'verifying' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'builder', toolCalls: [{ name: 'write_file', input: { path: 'src/auth/auth.js', change: 'token.expiry * 1000 < Date.now()' }, id: 'toolu_bld_01' }] },
     contextState: mk(500, 800, 0),
     activeAgent: 'builder', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0.65, reviewer: 0 },
@@ -1127,7 +1127,7 @@ const STEPS = [
     message: { result: 'PASS — 4/4 tests passing' },
     narration: "Tests pass. The Builder confirms the fix works. Its context is still only ~2,400 tokens — tiny compared to the Explorer. The Builder is ready to produce its output: the patch and the test results, formatted as a handoff for the Reviewer.",
     stateMutations: { builderState: 'done' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'builder', content: "Fix applied.", toolCalls: [{ name: 'run_tests', input: { target: 'tests/auth.test.js' }, id: 'toolu_bld_02' }] },
     contextState: mk(500, 800, 1100),
     activeAgent: 'builder', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0 },
@@ -1140,7 +1140,7 @@ const STEPS = [
     message: { patch: 'auth.js line 23: seconds→ms fix', testResults: 'PASS 4/4', context: 'fresh' },
     narration: "The Builder packages its output — the patch diff and test results — and passes it to the Reviewer. The Reviewer starts with a completely fresh context. No attachment to the Builder's decisions. No accumulated reasoning. Just fresh eyes evaluating the output on its merits.",
     stateMutations: { reviewerState: 'reviewing', activeAgent: 'reviewer' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'builder', content: "**Handoff to Reviewer:**\nPatch: auth.js line 23 — `token.expiry * 1000 < Date.now()`\nTests: PASS 4/4" },
     contextState: mk(500, 280, 0),
     activeAgent: 'reviewer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.39 },
@@ -1153,7 +1153,7 @@ const STEPS = [
     message: { evaluation: 'Fix is correct. But tests/auth.test.js also has a flawed test fixture.' },
     narration: "The Reviewer reads the test file and catches something: the \"should reject an expired token\" test was passing for the wrong reason. Its fixture uses the same seconds format correctly, but the test logic was relying on the bug to make expired tokens appear expired. The Reviewer flags this — the test passes after the fix but could be more explicit.",
     stateMutations: { reviewerState: 'reviewing' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'reviewer', content: "Reviewing patch with fresh context.", toolCalls: [{ name: 'read_file', input: { path: 'tests/auth.test.js' }, id: 'toolu_rev_01' }] },
     contextState: mk(500, 500, 900),
     activeAgent: 'reviewer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.95 },
@@ -1166,7 +1166,7 @@ const STEPS = [
     message: { verdict: 'APPROVE WITH NOTES', notes: 'Fix is correct. Recommend adding explicit comment to test explaining the seconds/ms distinction.' },
     stateMutations: { reviewerState: 'done', builderState: 'revising', activeAgent: 'builder' },
     narration: "The Reviewer approves the fix but sends notes back: the test could be more explicit. This is the fresh-context critique value — the Reviewer wasn't invested in the Builder's choices, so it evaluated the output cleanly. The Builder will make a small clarifying update.",
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'reviewer', content: "**APPROVE WITH NOTES**\nFix is correct. Test should add a comment clarifying seconds vs milliseconds distinction." },
     contextState: mk(500, 500, 900),
     activeAgent: 'reviewer', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.95 },
@@ -1179,7 +1179,7 @@ const STEPS = [
     message: { file: 'tests/auth.test.js', change: 'Added clarifying comment about seconds vs milliseconds' },
     narration: "The Builder adds a clarifying comment to the test. Task complete. Five agents (user, orchestrator, explorer, builder, reviewer), each with focused context, each doing one thing well. The total work was the same as Act 2 — but no single agent was overwhelmed.",
     stateMutations: { builderState: 'done', systemPhase: 'idle' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'builder', content: "Addressing reviewer notes.", toolCalls: [{ name: 'write_file', input: { path: 'tests/auth.test.js', comment: '// expiry stored in seconds, Date.now() in ms' }, id: 'toolu_bld_03' }] },
     contextState: mk(500, 900, 1100),
     activeAgent: 'builder', compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.25, reviewer: 0.95 },
@@ -1192,7 +1192,7 @@ const STEPS = [
     message: { explorer_peak: '86,000 tokens (43%)', builder_start: '862 tokens (0.4%)', handoff_size: '312 tokens' },
     narration: "The Explorer used 86,000 tokens understanding the codebase. The Builder received 312 tokens and had 99.6% of its context free. Each agent was doing one thing, with the right amount of information. No agent was overwhelmed. This is context sharding — you get scale by dividing the problem, not by giving one agent infinite memory.",
     stateMutations: { activeAgent: null },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', agent: 'orchestrator', content: "All agents complete. Bug fixed in `src/auth/auth.js`, tests passing, reviewer approved. Task done." },
     contextState: mk(500, 900, 1100),
     activeAgent: null, compactionData: null,
     agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.25, reviewer: 0.95 },
@@ -1532,35 +1532,15 @@ const ACT1_PATHS = {
   'resp-flow': 'M 440 210 L 180 210',
 };
 
-// Act 3: Multi-agent pipeline with orchestrator, explorer, builder, reviewer
+// Act 3: Multi-agent pipeline — agents left column, shared tools right column
 const ACT3_RECTS = {
-  [C.ORCHESTRATOR]: { x: 30,  y: 30,  w: 140, h: 56, label: 'Orchestrator', colorKey: 'harness' },
-  [C.EXPLORER]:     { x: 240, y: 30,  w: 130, h: 56, label: 'Explorer', colorKey: 'harness' },
-  [C.BUILDER]:      { x: 240, y: 160, w: 130, h: 56, label: 'Builder', colorKey: 'harness' },
-  [C.REVIEWER]:     { x: 240, y: 290, w: 130, h: 56, label: 'Reviewer', colorKey: 'harness' },
-  [C.TOOL_READ]:    { x: 430, y: 30,  w: 110, h: 48, label: 'read_file', colorKey: 'tools' },
-  [C.TOOL_WRITE]:   { x: 430, y: 160, w: 110, h: 48, label: 'write_file', colorKey: 'tools' },
-  [C.TOOL_TESTS]:   { x: 430, y: 220, w: 110, h: 48, label: 'run_tests',  colorKey: 'tools' },
-};
-
-const ACT3_LINES = [
-  { id: 'orch-exp',  x1: 170, y1: 58,  x2: 240, y2: 58  },
-  { id: 'exp-bld',  x1: 305, y1: 86,  x2: 305, y2: 160 },
-  { id: 'bld-rev',  x1: 305, y1: 216, x2: 305, y2: 290 },
-  { id: 'rev-bld',  x1: 265, y1: 290, x2: 265, y2: 216 },
-  { id: 'exp-tr',   x1: 370, y1: 54,  x2: 430, y2: 54  },
-  { id: 'bld-tw',   x1: 370, y1: 184, x2: 430, y2: 184 },
-  { id: 'bld-tt',   x1: 370, y1: 195, x2: 430, y2: 244 },
-];
-
-const ACT3_PATHS = {
-  'orch-to-exp':  'M 170 55 L 240 55',
-  'exp-to-bld':   'M 305 86 L 305 160',
-  'bld-to-rev':   'M 305 216 L 305 290',
-  'rev-to-bld':   'M 265 290 L 265 216',
-  'exp-tool':     'M 370 50 L 430 50',
-  'bld-write':    'M 370 182 L 430 182',
-  'bld-tests':    'M 370 195 C 420 195 430 240 430 244',
+  [C.ORCHESTRATOR]: { x: 40,  y: 18,  w: 155, h: 48, label: 'Orchestrator', colorKey: 'harness' },
+  [C.EXPLORER]:     { x: 40,  y: 95,  w: 155, h: 48, label: 'Explorer',     colorKey: 'harness' },
+  [C.BUILDER]:      { x: 40,  y: 172, w: 155, h: 48, label: 'Builder',      colorKey: 'harness' },
+  [C.REVIEWER]:     { x: 40,  y: 249, w: 155, h: 48, label: 'Reviewer',     colorKey: 'harness' },
+  [C.TOOL_READ]:    { x: 440, y: 100, w: 115, h: 34, label: 'read_file',   colorKey: 'tools' },
+  [C.TOOL_WRITE]:   { x: 440, y: 172, w: 115, h: 34, label: 'write_file',  colorKey: 'tools' },
+  [C.TOOL_TESTS]:   { x: 440, y: 244, w: 115, h: 34, label: 'run_tests',   colorKey: 'tools' },
 };
 
 // Act 4: Agentic loop + Compaction Engine + Audit Log
@@ -1939,41 +1919,52 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
     [C.REVIEWER]:     ac.reviewer || 0,
   };
 
+  // Layout: agents stacked left, shared tools column right
+  // Agents: x=40 w=155, right edge 195. Tools: x=440 w=115, left edge 440.
+  // Agent centers: x=117. Vertical gaps: 29px between boxes.
   return (
-    <svg viewBox="0 0 600 380" style={{ width: '100%', height: '100%' }}>
+    <svg viewBox="0 0 800 340" style={{ width: '100%', height: '100%' }}>
       <defs>
         <pattern id="dots-a3" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="#1e293b"/>
         </pattern>
-        <path id="orch-to-exp-a3" d="M 170 55 L 240 55"/>
-        <path id="exp-to-bld-a3"  d="M 305 86 L 305 160"/>
-        <path id="bld-to-rev-a3"  d="M 305 216 L 305 290"/>
-        <path id="rev-to-bld-a3"  d="M 265 290 L 265 216"/>
-        <path id="exp-tool-a3"    d="M 370 50 L 430 50"/>
-        <path id="rev-tool-a3"   d="M 370 310 C 410 310 430 80 430 54"/>
-        <path id="bld-write-a3"   d="M 370 182 L 430 182"/>
-        <path id="bld-tests-a3"   d="M 370 195 C 420 195 430 240 430 244"/>
+        {/* Handoff paths (vertical, between agents) */}
+        <path id="orch-to-exp-a3" d="M 117 66 L 117 95"/>
+        <path id="exp-to-bld-a3"  d="M 117 143 L 117 172"/>
+        <path id="bld-to-rev-a3"  d="M 117 220 L 117 249"/>
+        <path id="rev-to-bld-a3"  d="M 75 249 L 75 220"/>
+        {/* Tool paths (horizontal, agents → shared tools) */}
+        <path id="exp-tool-a3"    d="M 195 119 L 440 117"/>
+        <path id="rev-tool-a3"    d="M 195 273 C 320 273 320 117 440 117"/>
+        <path id="bld-write-a3"   d="M 195 196 L 440 189"/>
+        <path id="bld-tests-a3"   d="M 195 202 C 300 210 420 245 440 261"/>
       </defs>
-      <rect width="600" height="380" fill="#0f172a"/>
-      <rect width="600" height="380" fill="url(#dots-a3)"/>
+      <rect width="800" height="340" fill="#0f172a"/>
+      <rect width="800" height="340" fill="url(#dots-a3)"/>
 
-      {/* Structural lines */}
-      <line x1="170" y1="58" x2="240" y2="58" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="305" y1="86" x2="305" y2="160" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="305" y1="216" x2="305" y2="290" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="265" y1="290" x2="265" y2="216" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="370" y1="54" x2="430" y2="54" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="370" y1="186" x2="430" y2="186" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <path d="M 370 198 C 420 198 430 242 430 246" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <path d="M 370 310 C 410 310 430 80 430 54" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.4"/>
+      {/* ── Structural lines: agent handoffs (vertical) ── */}
+      <line x1="117" y1="66" x2="117" y2="95" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="113,92 117,99 121,92" fill="#334155" opacity="0.5"/>
+      <line x1="117" y1="143" x2="117" y2="172" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="113,169 117,176 121,169" fill="#334155" opacity="0.5"/>
+      <line x1="117" y1="220" x2="117" y2="249" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="113,246 117,253 121,246" fill="#334155" opacity="0.5"/>
+      <line x1="75" y1="249" x2="75" y2="220" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="71,223 75,216 79,223" fill="#334155" opacity="0.5"/>
 
-      {/* Handoff labels */}
-      <text x="205" y="48" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">task</text>
-      <text x="315" y="128" fontSize="8" fill="#64748b" fontFamily="monospace">handoff</text>
-      <text x="315" y="258" fontSize="8" fill="#64748b" fontFamily="monospace">review</text>
-      <text x="225" y="258" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">notes</text>
+      {/* ── Structural lines: tool connections (horizontal) ── */}
+      <line x1="195" y1="119" x2="440" y2="117" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="195" y1="196" x2="440" y2="189" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 195 202 C 300 210 420 245 440 261" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 195 273 C 320 273 320 117 440 117" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.35"/>
 
-      {/* Boxes */}
+      {/* ── Handoff labels ── */}
+      <text x="130" y="84" fontSize="8" fill="#64748b" fontFamily="monospace">task</text>
+      <text x="130" y="161" fontSize="8" fill="#64748b" fontFamily="monospace">handoff</text>
+      <text x="130" y="238" fontSize="8" fill="#64748b" fontFamily="monospace">review</text>
+      <text x="55" y="238" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">notes</text>
+
+      {/* ── Component boxes ── */}
       <CompBox rect={ACT3_RECTS[C.ORCHESTRATOR]} active={active.has(C.ORCHESTRATOR)} stepKey={stepKey}/>
       <CompBox rect={ACT3_RECTS[C.EXPLORER]}     active={active.has(C.EXPLORER)}     stepKey={stepKey}/>
       <CompBox rect={ACT3_RECTS[C.BUILDER]}      active={active.has(C.BUILDER)}      stepKey={stepKey}/>
@@ -1982,13 +1973,13 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       <CompBox rect={ACT3_RECTS[C.TOOL_WRITE]}   active={active.has(C.TOOL_WRITE)}   stepKey={stepKey}/>
       <CompBox rect={ACT3_RECTS[C.TOOL_TESTS]}   active={active.has(C.TOOL_TESTS)}   stepKey={stepKey}/>
 
-      {/* Mini context meters for each agent box */}
-      <MiniContextMeter x={55} y={74}  w={90} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.harness.border}/>
-      <MiniContextMeter x={260} y={74}  w={90} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.harness.border}/>
-      <MiniContextMeter x={260} y={204} w={90} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.harness.border}/>
-      <MiniContextMeter x={260} y={334} w={90} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.harness.border}/>
+      {/* Mini context meters (centered in each agent box) */}
+      <MiniContextMeter x={68} y={56}  w={100} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.harness.border}/>
+      <MiniContextMeter x={68} y={133} w={100} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.harness.border}/>
+      <MiniContextMeter x={68} y={210} w={100} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.harness.border}/>
+      <MiniContextMeter x={68} y={287} w={100} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.harness.border}/>
 
-      {/* Animated flow packets */}
+      {/* ── Animated flow packets ── */}
       {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.EXPLORER && (
         <FlowPacket pathId="orch-to-exp-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
@@ -2005,7 +1996,7 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
         <FlowPacket pathId="exp-tool-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_READ) && activeAgent === 'reviewer' && (
-        <FlowPacket pathId="rev-tool-a3" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
+        <FlowPacket pathId="rev-tool-a3" color={COLORS.tools.border} duration={1.4} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_WRITE) && (
         <FlowPacket pathId="bld-write-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
@@ -2015,7 +2006,7 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       )}
 
       {/* Legend */}
-      <g transform="translate(30, 355)">
+      <g transform="translate(30, 315)">
         <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
         <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Agent (harness)</text>
         <rect x="120" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
@@ -2770,10 +2761,10 @@ const PANEL_STYLE = {
 // ChatPanel
 // ---------------------------------------------------------------------------
 const AGENT_COLORS = {
-  orchestrator: { border: COLORS.agents.border, bg: COLORS.agents.bg,   text: COLORS.agents.text, label: 'Orchestrator' },
-  explorer:     { border: '#60a5fa',             bg: '#172554',          text: '#93c5fd',          label: 'Explorer' },
-  builder:      { border: '#34d399',             bg: '#052e16',          text: '#86efac',          label: 'Builder' },
-  reviewer:     { border: '#a78bfa',             bg: '#2e1065',          text: '#c4b5fd',          label: 'Reviewer' },
+  orchestrator: { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Orchestrator' },
+  explorer:     { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Explorer' },
+  builder:      { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Builder' },
+  reviewer:     { border: '#334155', bg: '#1e293b', text: '#c084fc', label: 'Reviewer' },
 };
 
 function ToolCallBubble({ call }) {

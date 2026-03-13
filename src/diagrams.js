@@ -26,35 +26,15 @@ const ACT1_PATHS = {
   'resp-flow': 'M 440 210 L 180 210',
 };
 
-// Act 3: Multi-agent pipeline with orchestrator, explorer, builder, reviewer
+// Act 3: Multi-agent pipeline — agents left column, shared tools right column
 const ACT3_RECTS = {
-  [C.ORCHESTRATOR]: { x: 30,  y: 30,  w: 140, h: 56, label: 'Orchestrator', colorKey: 'harness' },
-  [C.EXPLORER]:     { x: 240, y: 30,  w: 130, h: 56, label: 'Explorer', colorKey: 'harness' },
-  [C.BUILDER]:      { x: 240, y: 160, w: 130, h: 56, label: 'Builder', colorKey: 'harness' },
-  [C.REVIEWER]:     { x: 240, y: 290, w: 130, h: 56, label: 'Reviewer', colorKey: 'harness' },
-  [C.TOOL_READ]:    { x: 430, y: 30,  w: 110, h: 48, label: 'read_file', colorKey: 'tools' },
-  [C.TOOL_WRITE]:   { x: 430, y: 160, w: 110, h: 48, label: 'write_file', colorKey: 'tools' },
-  [C.TOOL_TESTS]:   { x: 430, y: 220, w: 110, h: 48, label: 'run_tests',  colorKey: 'tools' },
-};
-
-const ACT3_LINES = [
-  { id: 'orch-exp',  x1: 170, y1: 58,  x2: 240, y2: 58  },
-  { id: 'exp-bld',  x1: 305, y1: 86,  x2: 305, y2: 160 },
-  { id: 'bld-rev',  x1: 305, y1: 216, x2: 305, y2: 290 },
-  { id: 'rev-bld',  x1: 265, y1: 290, x2: 265, y2: 216 },
-  { id: 'exp-tr',   x1: 370, y1: 54,  x2: 430, y2: 54  },
-  { id: 'bld-tw',   x1: 370, y1: 184, x2: 430, y2: 184 },
-  { id: 'bld-tt',   x1: 370, y1: 195, x2: 430, y2: 244 },
-];
-
-const ACT3_PATHS = {
-  'orch-to-exp':  'M 170 55 L 240 55',
-  'exp-to-bld':   'M 305 86 L 305 160',
-  'bld-to-rev':   'M 305 216 L 305 290',
-  'rev-to-bld':   'M 265 290 L 265 216',
-  'exp-tool':     'M 370 50 L 430 50',
-  'bld-write':    'M 370 182 L 430 182',
-  'bld-tests':    'M 370 195 C 420 195 430 240 430 244',
+  [C.ORCHESTRATOR]: { x: 40,  y: 18,  w: 155, h: 48, label: 'Orchestrator', colorKey: 'harness' },
+  [C.EXPLORER]:     { x: 40,  y: 95,  w: 155, h: 48, label: 'Explorer',     colorKey: 'harness' },
+  [C.BUILDER]:      { x: 40,  y: 172, w: 155, h: 48, label: 'Builder',      colorKey: 'harness' },
+  [C.REVIEWER]:     { x: 40,  y: 249, w: 155, h: 48, label: 'Reviewer',     colorKey: 'harness' },
+  [C.TOOL_READ]:    { x: 440, y: 100, w: 115, h: 34, label: 'read_file',   colorKey: 'tools' },
+  [C.TOOL_WRITE]:   { x: 440, y: 172, w: 115, h: 34, label: 'write_file',  colorKey: 'tools' },
+  [C.TOOL_TESTS]:   { x: 440, y: 244, w: 115, h: 34, label: 'run_tests',   colorKey: 'tools' },
 };
 
 // Act 4: Agentic loop + Compaction Engine + Audit Log
@@ -433,41 +413,52 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
     [C.REVIEWER]:     ac.reviewer || 0,
   };
 
+  // Layout: agents stacked left, shared tools column right
+  // Agents: x=40 w=155, right edge 195. Tools: x=440 w=115, left edge 440.
+  // Agent centers: x=117. Vertical gaps: 29px between boxes.
   return (
-    <svg viewBox="0 0 600 380" style={{ width: '100%', height: '100%' }}>
+    <svg viewBox="0 0 800 340" style={{ width: '100%', height: '100%' }}>
       <defs>
         <pattern id="dots-a3" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="#1e293b"/>
         </pattern>
-        <path id="orch-to-exp-a3" d="M 170 55 L 240 55"/>
-        <path id="exp-to-bld-a3"  d="M 305 86 L 305 160"/>
-        <path id="bld-to-rev-a3"  d="M 305 216 L 305 290"/>
-        <path id="rev-to-bld-a3"  d="M 265 290 L 265 216"/>
-        <path id="exp-tool-a3"    d="M 370 50 L 430 50"/>
-        <path id="rev-tool-a3"   d="M 370 310 C 410 310 430 80 430 54"/>
-        <path id="bld-write-a3"   d="M 370 182 L 430 182"/>
-        <path id="bld-tests-a3"   d="M 370 195 C 420 195 430 240 430 244"/>
+        {/* Handoff paths (vertical, between agents) */}
+        <path id="orch-to-exp-a3" d="M 117 66 L 117 95"/>
+        <path id="exp-to-bld-a3"  d="M 117 143 L 117 172"/>
+        <path id="bld-to-rev-a3"  d="M 117 220 L 117 249"/>
+        <path id="rev-to-bld-a3"  d="M 75 249 L 75 220"/>
+        {/* Tool paths (horizontal, agents → shared tools) */}
+        <path id="exp-tool-a3"    d="M 195 119 L 440 117"/>
+        <path id="rev-tool-a3"    d="M 195 273 C 320 273 320 117 440 117"/>
+        <path id="bld-write-a3"   d="M 195 196 L 440 189"/>
+        <path id="bld-tests-a3"   d="M 195 202 C 300 210 420 245 440 261"/>
       </defs>
-      <rect width="600" height="380" fill="#0f172a"/>
-      <rect width="600" height="380" fill="url(#dots-a3)"/>
+      <rect width="800" height="340" fill="#0f172a"/>
+      <rect width="800" height="340" fill="url(#dots-a3)"/>
 
-      {/* Structural lines */}
-      <line x1="170" y1="58" x2="240" y2="58" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="305" y1="86" x2="305" y2="160" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="305" y1="216" x2="305" y2="290" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="265" y1="290" x2="265" y2="216" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="370" y1="54" x2="430" y2="54" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="370" y1="186" x2="430" y2="186" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <path d="M 370 198 C 420 198 430 242 430 246" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <path d="M 370 310 C 410 310 430 80 430 54" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.4"/>
+      {/* ── Structural lines: agent handoffs (vertical) ── */}
+      <line x1="117" y1="66" x2="117" y2="95" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="113,92 117,99 121,92" fill="#334155" opacity="0.5"/>
+      <line x1="117" y1="143" x2="117" y2="172" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="113,169 117,176 121,169" fill="#334155" opacity="0.5"/>
+      <line x1="117" y1="220" x2="117" y2="249" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="113,246 117,253 121,246" fill="#334155" opacity="0.5"/>
+      <line x1="75" y1="249" x2="75" y2="220" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="71,223 75,216 79,223" fill="#334155" opacity="0.5"/>
 
-      {/* Handoff labels */}
-      <text x="205" y="48" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">task</text>
-      <text x="315" y="128" fontSize="8" fill="#64748b" fontFamily="monospace">handoff</text>
-      <text x="315" y="258" fontSize="8" fill="#64748b" fontFamily="monospace">review</text>
-      <text x="225" y="258" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">notes</text>
+      {/* ── Structural lines: tool connections (horizontal) ── */}
+      <line x1="195" y1="119" x2="440" y2="117" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="195" y1="196" x2="440" y2="189" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 195 202 C 300 210 420 245 440 261" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 195 273 C 320 273 320 117 440 117" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.35"/>
 
-      {/* Boxes */}
+      {/* ── Handoff labels ── */}
+      <text x="130" y="84" fontSize="8" fill="#64748b" fontFamily="monospace">task</text>
+      <text x="130" y="161" fontSize="8" fill="#64748b" fontFamily="monospace">handoff</text>
+      <text x="130" y="238" fontSize="8" fill="#64748b" fontFamily="monospace">review</text>
+      <text x="55" y="238" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">notes</text>
+
+      {/* ── Component boxes ── */}
       <CompBox rect={ACT3_RECTS[C.ORCHESTRATOR]} active={active.has(C.ORCHESTRATOR)} stepKey={stepKey}/>
       <CompBox rect={ACT3_RECTS[C.EXPLORER]}     active={active.has(C.EXPLORER)}     stepKey={stepKey}/>
       <CompBox rect={ACT3_RECTS[C.BUILDER]}      active={active.has(C.BUILDER)}      stepKey={stepKey}/>
@@ -476,13 +467,13 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       <CompBox rect={ACT3_RECTS[C.TOOL_WRITE]}   active={active.has(C.TOOL_WRITE)}   stepKey={stepKey}/>
       <CompBox rect={ACT3_RECTS[C.TOOL_TESTS]}   active={active.has(C.TOOL_TESTS)}   stepKey={stepKey}/>
 
-      {/* Mini context meters for each agent box */}
-      <MiniContextMeter x={55} y={74}  w={90} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.harness.border}/>
-      <MiniContextMeter x={260} y={74}  w={90} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.harness.border}/>
-      <MiniContextMeter x={260} y={204} w={90} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.harness.border}/>
-      <MiniContextMeter x={260} y={334} w={90} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.harness.border}/>
+      {/* Mini context meters (centered in each agent box) */}
+      <MiniContextMeter x={68} y={56}  w={100} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.harness.border}/>
+      <MiniContextMeter x={68} y={133} w={100} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.harness.border}/>
+      <MiniContextMeter x={68} y={210} w={100} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.harness.border}/>
+      <MiniContextMeter x={68} y={287} w={100} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.harness.border}/>
 
-      {/* Animated flow packets */}
+      {/* ── Animated flow packets ── */}
       {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.EXPLORER && (
         <FlowPacket pathId="orch-to-exp-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
@@ -499,7 +490,7 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
         <FlowPacket pathId="exp-tool-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_READ) && activeAgent === 'reviewer' && (
-        <FlowPacket pathId="rev-tool-a3" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
+        <FlowPacket pathId="rev-tool-a3" color={COLORS.tools.border} duration={1.4} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_WRITE) && (
         <FlowPacket pathId="bld-write-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
@@ -509,7 +500,7 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       )}
 
       {/* Legend */}
-      <g transform="translate(30, 355)">
+      <g transform="translate(30, 315)">
         <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
         <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Agent (harness)</text>
         <rect x="120" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
