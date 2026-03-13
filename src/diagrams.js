@@ -206,17 +206,26 @@ function MiniContextMeter({ x, y, w, h, percent, color }) {
 // ---------------------------------------------------------------------------
 function FlowPacket({ pathId, color, duration, delay, stepKey }) {
   const dotColor = color || '#ffffff';
+  const filterId = `glow-fp-${pathId}-${stepKey}`;
   return (
-    <circle r={5} fill={dotColor} opacity={0.9} key={`fp-${pathId}-${stepKey}`}>
-      <animateMotion
-        dur={`${duration || 1.2}s`}
-        begin={`${delay || 0}s`}
-        repeatCount="indefinite"
-        rotate="auto"
-      >
-        <mpath href={`#${pathId}`}/>
-      </animateMotion>
-    </circle>
+    <g key={`fp-${pathId}-${stepKey}`}>
+      <defs>
+        <filter id={filterId} x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+        </filter>
+      </defs>
+      <circle r={7} fill={dotColor} opacity={0.95} filter={`url(#${filterId})`}>
+        <animateMotion
+          dur={`${duration || 1.2}s`}
+          begin={`${delay || 0}s`}
+          repeatCount="indefinite"
+          rotate="auto"
+        >
+          <mpath href={`#${pathId}`}/>
+        </animateMotion>
+      </circle>
+    </g>
   );
 }
 
@@ -226,55 +235,62 @@ function FlowPacket({ pathId, color, duration, delay, stepKey }) {
 function Act1Diagram({ activeComponents, messageFlow, stepKey }) {
   const active = new Set(activeComponents || []);
 
-  // Boxes span y=150-210. Request routes above at y=126. Response routes below at y=234.
+  // Layout: boxes at y=150..210, overhead request rail at y=126, underneath response rail at y=234.
+  // All traffic routes through Harness (center tap at x=310).
+  // User(60-180) --- Harness(250-370) --- API(440-560)
   return (
     <svg viewBox="0 0 640 310" style={{ width: '100%', height: '100%' }}>
       <defs>
         <pattern id="dots-a1" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="#1e293b"/>
         </pattern>
-        {/* user_prompt packet: User right-top → up → across → Harness left-top */}
-        <path id="user-to-harness-a1" d="M 180 150 L 180 126 L 250 126 L 250 150"/>
-        {/* api_request packet: Harness right-top → up → across → API left-top */}
-        <path id="harness-to-api-a1" d="M 370 150 L 370 126 L 440 126 L 440 150"/>
-        {/* api_response packet: API left-bottom → down → across → Harness right-bottom */}
-        <path id="api-to-harness-a1" d="M 440 210 L 440 234 L 370 234 L 370 210"/>
+        {/* user_prompt: User right edge → up to rail → across to Harness tap → down into Harness */}
+        <path id="user-to-harness-a1" d="M 180 150 L 180 126 L 310 126 L 310 150"/>
+        {/* api_request: Harness tap → up to rail → across to API → down into API */}
+        <path id="harness-to-api-a1"  d="M 310 150 L 310 126 L 440 126 L 440 150"/>
+        {/* api_response: API bottom → down to rail → across to Harness tap → up into Harness */}
+        <path id="api-to-harness-a1"  d="M 440 210 L 440 234 L 310 234 L 310 210"/>
+        {/* harness_response: Harness tap → down to rail → across to User → up into User */}
+        <path id="harness-to-user-a1" d="M 310 210 L 310 234 L 180 234 L 180 210"/>
       </defs>
       <rect width="640" height="310" fill="#0f172a"/>
       <rect width="640" height="310" fill="url(#dots-a1)"/>
 
-      {/* Request line above boxes */}
+      {/* Request rail above boxes: User → Harness → API */}
       <path d="M 180 150 L 180 126 L 440 126 L 440 150" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* Harness tap to request line */}
-      <line x1="310" y1="150" x2="310" y2="126" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
-      {/* Arrow: request arrives at API top (pointing down) */}
-      <polygon points="436,150 440,161 444,150" fill="#334155"/>
+      {/* Harness tap to request rail */}
+      <line x1="310" y1="150" x2="310" y2="126" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.6"/>
+      {/* Arrow at API top (pointing down) */}
+      <polygon points="436,150 440,141 444,150" fill="#334155"/>
 
-      {/* Response line below boxes */}
+      {/* Response rail below boxes: API → Harness → User */}
       <path d="M 440 210 L 440 234 L 180 234 L 180 210" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* Harness tap to response line */}
-      <line x1="310" y1="210" x2="310" y2="234" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
-      {/* Arrow: response arrives at User bottom (pointing up) */}
-      <polygon points="176,210 180,199 184,210" fill="#334155"/>
+      {/* Harness tap to response rail */}
+      <line x1="310" y1="210" x2="310" y2="234" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.6"/>
+      {/* Arrow at User bottom (pointing up) */}
+      <polygon points="176,210 180,219 184,210" fill="#334155"/>
 
-      {/* Labels */}
-      <text x="310" y="116" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">request →</text>
-      <text x="310" y="250" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
+      {/* Labels on the rails */}
+      <text x="310" y="118" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">request →</text>
+      <text x="310" y="248" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
 
-      {/* Component boxes — drawn after lines so they sit on top */}
+      {/* Component boxes */}
       <CompBox rect={{ ...ACT1_RECTS[C.USER],    y: 150 }} active={active.has(C.USER)}    stepKey={stepKey}/>
       <CompBox rect={{ ...ACT1_RECTS[C.HARNESS], y: 150 }} active={active.has(C.HARNESS)} stepKey={stepKey}/>
       <CompBox rect={{ ...ACT1_RECTS[C.API],     y: 150 }} active={active.has(C.API)}     stepKey={stepKey}/>
 
-      {/* Animated packets */}
+      {/* Animated flow packets — follow the rails through the Harness tap */}
       {messageFlow && messageFlow.type === 'user_prompt' && (
-        <FlowPacket pathId="user-to-harness-a1" color={COLORS.user.border} stepKey={stepKey}/>
+        <FlowPacket pathId="user-to-harness-a1" color={COLORS.user.border} duration={2.0} stepKey={stepKey}/>
       )}
       {messageFlow && messageFlow.type === 'api_request' && (
-        <FlowPacket pathId="harness-to-api-a1" color={COLORS.harness.border} stepKey={stepKey}/>
+        <FlowPacket pathId="harness-to-api-a1" color={COLORS.harness.border} duration={2.0} stepKey={stepKey}/>
       )}
       {messageFlow && messageFlow.type === 'api_response' && (
-        <FlowPacket pathId="api-to-harness-a1" color={COLORS.genai.border} stepKey={stepKey}/>
+        <FlowPacket pathId="api-to-harness-a1" color={COLORS.genai.border} duration={2.0} stepKey={stepKey}/>
+      )}
+      {messageFlow && messageFlow.type === 'harness_response' && (
+        <FlowPacket pathId="harness-to-user-a1" color={COLORS.harness.border} duration={2.0} stepKey={stepKey}/>
       )}
 
       {/* Legend */}
