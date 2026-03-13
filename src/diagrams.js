@@ -26,37 +26,6 @@ const ACT1_PATHS = {
   'resp-flow': 'M 440 210 L 180 210',
 };
 
-// Act 2: Feedback loop — Harness → API/Model → (stop_reason?) → Tool Dispatch → Tools → Harness
-const ACT2_RECTS = {
-  [C.HARNESS]:    { x: 30,  y: 140, w: 120, h: 56, label: 'Harness', colorKey: 'harness' },
-  [C.API]:        { x: 220, y: 140, w: 140, h: 56, label: 'API / Model', colorKey: 'genai' },
-  'decision':     { x: 420, y: 148, w: 80,  h: 40, label: 'stop_reason?', colorKey: 'genai', isDiamond: true },
-  'dispatch':     { x: 30,  y: 290, w: 120, h: 56, label: 'Tool Dispatch', colorKey: 'harness' },
-  [C.TOOL_READ]:  { x: 220, y: 290, w: 110, h: 48, label: 'read_file', colorKey: 'tools' },
-  [C.TOOL_TESTS]: { x: 350, y: 290, w: 110, h: 48, label: 'run_tests', colorKey: 'tools' },
-  [C.TOOL_WRITE]: { x: 480, y: 290, w: 110, h: 48, label: 'write_file', colorKey: 'tools' },
-};
-
-const ACT2_LINES = [
-  { id: 'h-a',   x1: 150, y1: 168, x2: 220, y2: 168 },
-  { id: 'a-d',   x1: 360, y1: 168, x2: 420, y2: 168 },
-  { id: 'd-dis', x1: 460, y1: 188, x2: 90,  y2: 290, curved: true },
-  { id: 'dis-tr',x1: 150, y1: 318, x2: 220, y2: 318 },
-  { id: 'dis-tt',x1: 150, y1: 318, x2: 350, y2: 318 },
-  { id: 'dis-tw',x1: 150, y1: 318, x2: 480, y2: 318 },
-  { id: 'tools-h',x1: 90, y1: 290, x2: 90,  y2: 196, curved: true },
-];
-
-const ACT2_PATHS = {
-  'send-req':  'M 150 165 L 360 165',
-  'get-resp':  'M 360 175 L 150 175',
-  'to-tool':   'M 460 185 C 520 240 20 240 90 290',
-  'tool-back': 'M 90 290 C 20 240 20 180 150 175',
-  'dispatch-r':'M 150 315 L 220 315',
-  'dispatch-t':'M 150 315 C 200 315 300 315 350 315',
-  'dispatch-w':'M 150 315 C 200 315 430 315 480 315',
-};
-
 // Act 3: Multi-agent pipeline with orchestrator, explorer, builder, reviewer
 const ACT3_RECTS = {
   [C.ORCHESTRATOR]: { x: 30,  y: 30,  w: 140, h: 56, label: 'Orchestrator', colorKey: 'agents' },
@@ -307,85 +276,137 @@ function Act1Diagram({ activeComponents, messageFlow, stepKey }) {
 }
 
 // ---------------------------------------------------------------------------
-// Act 2 Diagram — agentic feedback loop
+// Act 2 Diagram — agentic feedback loop (harness-as-container layout)
 // ---------------------------------------------------------------------------
 function Act2Diagram({ activeComponents, messageFlow, stepKey }) {
   const active = new Set(activeComponents || []);
   const hasToolFlow = active.has(C.TOOL_READ) || active.has(C.TOOL_TESTS) || active.has(C.TOOL_WRITE);
 
+  // Wide viewBox (900x310) matches the panel's landscape aspect ratio
+  // Even 29px gaps between all rows
+  const ctxMgr   = { x: 22, y: 26,  w: 516, h: 42, label: 'Context Manager',  colorKey: 'harness' };
+  const stopRsn  = { x: 22, y: 97,  w: 516, h: 40, label: 'stop_reason?',     colorKey: 'genai' };
+  const dispatch = { x: 22, y: 166, w: 328, h: 38, label: 'Tool Dispatch',    colorKey: 'harness' };
+  const doneBox  = { x: 365, y: 166, w: 173, h: 38, label: 'DONE',            colorKey: 'genai' };
+  const readF    = { x: 22,  y: 233, w: 102, h: 26, label: 'read_file',       colorKey: 'tools' };
+  const runT     = { x: 130, y: 233, w: 102, h: 26, label: 'run_tests',       colorKey: 'tools' };
+  const writeF   = { x: 238, y: 233, w: 102, h: 26, label: 'write_file',      colorKey: 'tools' };
+  const apiBox   = { x: 610, y: 54,  w: 185, h: 56, label: 'API / Model',     colorKey: 'genai' };
+
   return (
-    <svg viewBox="0 0 620 380" style={{ width: '100%', height: '100%' }}>
+    <svg viewBox="0 0 900 310" style={{ width: '100%', height: '100%' }}>
       <defs>
         <pattern id="dots-a2" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="#1e293b"/>
         </pattern>
-        {/* Request above: Harness right-top → up → across → down to decision top */}
-        <path id="send-req-a2"   d="M 150 140 L 150 115 L 460 115 L 460 148"/>
-        {/* Response below: API right-bottom → down → across → up to Harness right-bottom */}
-        <path id="get-resp-a2"   d="M 360 196 L 360 212 L 150 212 L 150 196"/>
-        <path id="to-tool-a2"    d="M 456 185 C 530 240 20 240 90 290"/>
-        <path id="tool-back-a2"  d="M 90 290 C 20 240 20 212 150 212"/>
-        <path id="dispatch-r-a2" d="M 150 315 L 220 315"/>
-        <path id="dispatch-t-a2" d="M 150 315 C 200 315 300 315 350 315"/>
-        <path id="dispatch-w-a2" d="M 150 315 C 200 315 430 315 480 315"/>
+        {/* Flow packet paths */}
+        <path id="send-req-a2"       d="M 538 47 L 610 70"/>
+        <path id="get-resp-a2"       d="M 610 92 L 538 117"/>
+        <path id="stop-to-dispatch"  d="M 186 137 L 186 166"/>
+        <path id="stop-to-done"      d="M 451 137 L 451 166"/>
+        <path id="dispatch-r-a2"     d="M 186 204 L 73 233"/>
+        <path id="dispatch-t-a2"     d="M 186 204 L 181 233"/>
+        <path id="dispatch-w-a2"     d="M 186 204 L 289 233"/>
+        <path id="tool-back-a2"      d="M 22 246 C -4 180 -4 60 22 47"/>
       </defs>
-      <rect width="620" height="380" fill="#0f172a"/>
-      <rect width="620" height="380" fill="url(#dots-a2)"/>
+      <rect width="900" height="310" fill="#0f172a"/>
+      <rect width="900" height="310" fill="url(#dots-a2)"/>
 
-      {/* Structural lines */}
-      {/* Request above (Harness → API → decision) */}
-      <path d="M 150 140 L 150 115 L 460 115 L 460 148" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* API notch to request line */}
-      <line x1="290" y1="140" x2="290" y2="115" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
-      {/* Response below (API → Harness) */}
-      <path d="M 360 196 L 360 212 L 150 212 L 150 196" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* Tool dispatch loop */}
-      <path d="M 456 188 C 530 240 20 240 90 290" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <path d="M 90 290 C 20 240 20 212 150 212" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="150" y1="315" x2="220" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="150" y1="315" x2="350" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="150" y1="315" x2="480" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      {/* ── Harness container (dashed border with subtle fill) ── */}
+      <rect x="10" y="12" width="540" height="262" rx="10"
+            fill={COLORS.harness.bg} opacity="0.06"/>
+      <rect x="10" y="12" width="540" height="262" rx="10"
+            fill="none" stroke={COLORS.harness.border} strokeWidth="1.5"
+            strokeDasharray="6 4" opacity={active.has(C.HARNESS) ? 0.6 : 0.25}/>
+      <text x="20" y="8" fontSize="8" fill={COLORS.harness.text} fontFamily="monospace"
+            fontWeight="600" letterSpacing="0.08em">HARNESS — THE RUNTIME</text>
 
-      {/* Boxes */}
-      <CompBox rect={ACT2_RECTS[C.HARNESS]}    active={active.has(C.HARNESS)}    stepKey={stepKey}/>
-      <CompBox rect={ACT2_RECTS[C.API]}         active={active.has(C.API)}         stepKey={stepKey}/>
-      <CompBox rect={ACT2_RECTS['decision']}    active={active.has(C.API)}         stepKey={stepKey}/>
-      <CompBox rect={ACT2_RECTS['dispatch']}    active={hasToolFlow}               stepKey={stepKey}/>
-      <CompBox rect={ACT2_RECTS[C.TOOL_READ]}   active={active.has(C.TOOL_READ)}   stepKey={stepKey}/>
-      <CompBox rect={ACT2_RECTS[C.TOOL_TESTS]}  active={active.has(C.TOOL_TESTS)}  stepKey={stepKey}/>
-      <CompBox rect={ACT2_RECTS[C.TOOL_WRITE]}  active={active.has(C.TOOL_WRITE)}  stepKey={stepKey}/>
+      {/* ── Harness boundary (dashed vertical line + stacked label) ── */}
+      <line x1="572" y1="12" x2="572" y2="274" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.4"/>
+      <text x="572" y="36" textAnchor="middle" fontSize="7" fill="#64748b" fontFamily="monospace">harness</text>
+      <text x="572" y="46" textAnchor="middle" fontSize="7" fill="#64748b" fontFamily="monospace">boundary</text>
+      <text x="702" y="38" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">external service</text>
 
-      {/* Flow labels */}
-      <text x="255" y="106" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">API call →</text>
-      <text x="255" y="226" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
-      <text x="520" y="238" fontSize="9" fill="#64748b" fontFamily="monospace">tool_use</text>
-      <text x="22"  y="238" fontSize="9" fill="#64748b" fontFamily="monospace">result</text>
+      {/* ── Vertical flow labels between boxes ── */}
+      <text x="280" y="86" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">↓ response</text>
+      <text x="186" y="155" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">tool_use ↓</text>
+      <text x="451" y="155" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">end_turn ↓</text>
+      <text x="186" y="222" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">↓</text>
+      <text x="180" y="268" textAnchor="middle" fontSize="7" fill="#64748b" fontFamily="monospace">↑ result → messages[] → loop</text>
 
-      {/* Animated flow packets */}
+      {/* ── Boundary crossing labels ── */}
+      <text x="572" y="62" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">→ call</text>
+      <text x="572" y="108" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">resp ←</text>
+
+      {/* ── Structural lines (dashed) ── */}
+      {/* Request: Context Manager → API */}
+      <line x1="538" y1="47" x2="610" y2="70" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="607,66 614,70 607,74" fill="#334155"/>
+      {/* Response: API → stop_reason */}
+      <line x1="610" y1="92" x2="538" y2="117" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="541,113 532,117 541,121" fill="#334155"/>
+
+      {/* Vertical connectors inside harness (with arrowheads) */}
+      <line x1="280" y1="68" x2="280" y2="97" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.4"/>
+      <line x1="186" y1="137" x2="186" y2="166" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.5"/>
+      <polygon points="182,163 186,170 190,163" fill="#334155" opacity="0.5"/>
+      <line x1="451" y1="137" x2="451" y2="166" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.5"/>
+      <polygon points="447,163 451,170 455,163" fill="#334155" opacity="0.5"/>
+
+      {/* Dispatch → tools (fan out) */}
+      <line x1="186" y1="204" x2="73" y2="233" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="186" y1="204" x2="181" y2="233" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="186" y1="204" x2="289" y2="233" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* Loop-back curve: tools left → ctxMgr left */}
+      <path d="M 22 246 C -4 180 -4 60 22 47" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* ── Component boxes ── */}
+      <CompBox rect={ctxMgr}   active={active.has(C.HARNESS)}    stepKey={stepKey}/>
+      <CompBox rect={stopRsn}  active={active.has(C.API)}        stepKey={stepKey}/>
+      <CompBox rect={dispatch}  active={hasToolFlow}              stepKey={stepKey}/>
+      <CompBox rect={doneBox}   active={false}                    stepKey={stepKey}/>
+      <CompBox rect={readF}     active={active.has(C.TOOL_READ)}  stepKey={stepKey}/>
+      <CompBox rect={runT}      active={active.has(C.TOOL_TESTS)} stepKey={stepKey}/>
+      <CompBox rect={writeF}    active={active.has(C.TOOL_WRITE)} stepKey={stepKey}/>
+      <CompBox rect={apiBox}    active={active.has(C.API)}        stepKey={stepKey}/>
+
+      {/* Sub-labels inside boxes */}
+      <text x={280} y={65} textAnchor="middle" fontSize="8" fill={COLORS.harness.text} fontFamily="monospace" opacity="0.6">assembles messages[] on every call</text>
+      <text x={280} y={134} textAnchor="middle" fontSize="8" fill={COLORS.genai.text} fontFamily="monospace" opacity="0.6">harness reads this to decide next action</text>
+      <text x={186} y={200} textAnchor="middle" fontSize="7" fill={COLORS.harness.text} fontFamily="monospace" opacity="0.5">parse → validate → route</text>
+      <text x={451} y={200} textAnchor="middle" fontSize="7" fill={COLORS.genai.text} fontFamily="monospace" opacity="0.5">loop exits</text>
+      <text x={702} y={98} textAnchor="middle" fontSize="8" fill={COLORS.genai.text} fontFamily="monospace" opacity="0.6">stateless fn</text>
+
+      {/* ── Animated flow packets ── */}
       {messageFlow && messageFlow.type === 'api_request' && (
-        <FlowPacket pathId="send-req-a2" color={COLORS.harness.border} stepKey={stepKey}/>
+        <FlowPacket pathId="send-req-a2" color={COLORS.harness.border} duration={1.8} stepKey={stepKey}/>
       )}
-      {messageFlow && messageFlow.type === 'api_response' && (
-        <FlowPacket pathId="get-resp-a2" color={COLORS.genai.border} stepKey={stepKey}/>
-      )}
-      {messageFlow && messageFlow.type === 'tool_dispatch' && (
-        <FlowPacket pathId="to-tool-a2" color={COLORS.harness.border} stepKey={stepKey}/>
-      )}
-      {messageFlow && messageFlow.type === 'tool_result' && (
-        <FlowPacket pathId="tool-back-a2" color={COLORS.tools.border} stepKey={stepKey}/>
-      )}
+      {/* tool_use response: API → stop_reason + stop_reason → Tool Dispatch */}
+      {messageFlow && messageFlow.type === 'api_response_tool_use' && (<>
+        <FlowPacket pathId="get-resp-a2" color={COLORS.genai.border} duration={1.8} stepKey={stepKey}/>
+        <FlowPacket pathId="stop-to-dispatch" color={COLORS.harness.border} duration={0.8} delay={0.6} stepKey={stepKey}/>
+      </>)}
+      {/* end_turn response: API → stop_reason + stop_reason → DONE */}
+      {messageFlow && messageFlow.type === 'api_response_end_turn' && (<>
+        <FlowPacket pathId="get-resp-a2" color={COLORS.genai.border} duration={1.8} stepKey={stepKey}/>
+        <FlowPacket pathId="stop-to-done" color={COLORS.genai.border} duration={0.8} delay={0.6} stepKey={stepKey}/>
+      </>)}
       {active.has(C.TOOL_READ) && (
-        <FlowPacket pathId="dispatch-r-a2" color={COLORS.tools.border} duration={0.8} stepKey={stepKey}/>
+        <FlowPacket pathId="dispatch-r-a2" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_TESTS) && (
-        <FlowPacket pathId="dispatch-t-a2" color={COLORS.tools.border} duration={1.0} stepKey={stepKey}/>
+        <FlowPacket pathId="dispatch-t-a2" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_WRITE) && (
         <FlowPacket pathId="dispatch-w-a2" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
+      {messageFlow && messageFlow.type === 'tool_call' && (
+        <FlowPacket pathId="tool-back-a2" color={COLORS.tools.border} duration={2.0} stepKey={stepKey}/>
+      )}
 
       {/* Legend */}
-      <g transform="translate(30, 355)">
+      <g transform="translate(30, 290)">
         <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
         <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Harness</text>
         <rect x="75" width="10" height="10" rx="2" fill={COLORS.genai.bg} stroke={COLORS.genai.border}/>

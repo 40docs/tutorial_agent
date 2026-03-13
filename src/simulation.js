@@ -832,11 +832,11 @@ const STEPS = [
     id: 'act2-step4', act: 2, phase: 'api_response',
     label: 'Model Returns tool_use — Not Text',
     activeComponents: [C.API, C.HARNESS],
-    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #1' },
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response_tool_use', label: 'Response #1' },
     message: API.act2Response1,
     narration: "This is different from Act 1. Instead of text, the model returns a tool_use block: { name: \"read_file\", input: { path: \"src/auth/auth.js\" } }. And the stop_reason is \"tool_use\" — not \"end_turn\". The model has stopped generating and is waiting for the tool result. The harness must now execute the tool.",
     stateMutations: { harnessState: 'executing_tool', currentTool: 'read_file' },
-    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'read_file', args: { path: 'src/auth/auth.js' }, toolUseId: 'toolu_a2_01' },
+    chatUpdate: { role: 'assistant', content: "I'll start by reading the authentication module to understand the code.", toolCalls: [{ name: 'read_file', input: { path: 'src/auth/auth.js' }, id: 'toolu_a2_01' }] },
     contextState: mk(500, 670, 0),
     activeAgent: null, compactionData: null,
   },
@@ -848,7 +848,7 @@ const STEPS = [
     message: { file: 'src/auth/auth.js', contents: SIMULATED_CODEBASE['src/auth/auth.js'] },
     narration: "The harness parses the tool_use block, dispatches to the read_file function, and gets the file contents back. The harness then injects this as a tool_result into the messages array — the model will see it on the next API call. Context is growing: the full auth.js content (~800 tokens) just joined the payload.",
     stateMutations: { harnessState: 'injecting_result', currentTool: null },
-    chatUpdate: { role: 'tool_result', content: 'Read src/auth/auth.js — 48 lines', toolUseId: 'toolu_a2_01' },
+    chatUpdate: { role: 'assistant', toolResults: [{ content: 'Read src/auth/auth.js — 48 lines', tool_use_id: 'toolu_a2_01' }] },
     contextState: mk(500, 670, 850),
     activeAgent: null, compactionData: null,
   },
@@ -856,11 +856,11 @@ const STEPS = [
     id: 'act2-step6', act: 2, phase: 'api_response',
     label: 'Model Returns tool_use — tokens.js',
     activeComponents: [C.API, C.HARNESS],
-    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #2' },
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response_tool_use', label: 'Response #2' },
     message: API.act2Response2,
     narration: "The model reads auth.js, spots the suspicious comparison on line 23, and decides it needs to see tokens.js to confirm how expiry is stored. Another tool_use, another stop_reason: \"tool_use\". The loop continues. The model is building evidence before committing to a fix — this is the self-grounding that GenAI lacked.",
     stateMutations: { harnessState: 'executing_tool', currentTool: 'read_file', apiCallCount: 2 },
-    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'read_file', args: { path: 'src/auth/tokens.js' }, toolUseId: 'toolu_a2_02' },
+    chatUpdate: { role: 'assistant', content: "I can see a suspicious comparison on line 23. I need to check tokens.js to confirm how expiry is stored.", toolCalls: [{ name: 'read_file', input: { path: 'src/auth/tokens.js' }, id: 'toolu_a2_02' }] },
     contextState: mk(500, 1205, 850),
     activeAgent: null, compactionData: null,
   },
@@ -872,7 +872,7 @@ const STEPS = [
     message: { file: 'src/auth/tokens.js', contents: SIMULATED_CODEBASE['src/auth/tokens.js'] },
     narration: "tokens.js is read. Line 14 is the smoking gun: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL. The expiry is stored in seconds. Now the model has the evidence it needs. Context has grown again — another ~700 tokens of file contents added to the payload.",
     stateMutations: { harnessState: 'injecting_result' },
-    chatUpdate: { role: 'tool_result', content: 'Read src/auth/tokens.js — 38 lines', toolUseId: 'toolu_a2_02' },
+    chatUpdate: { role: 'assistant', toolResults: [{ content: 'Read src/auth/tokens.js — 38 lines', tool_use_id: 'toolu_a2_02' }] },
     contextState: mk(500, 1205, 1580),
     activeAgent: null, compactionData: null,
   },
@@ -880,11 +880,11 @@ const STEPS = [
     id: 'act2-step8', act: 2, phase: 'api_response',
     label: 'Model Returns tool_use — run_tests',
     activeComponents: [C.API, C.HARNESS],
-    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #3' },
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response_tool_use', label: 'Response #3' },
     message: API.act2Response3,
     narration: "Bug confirmed. But the model doesn't just write the fix — it runs the tests first to understand the current state. This is methodical, evidence-driven reasoning. It wants to see what's failing before changing anything. A human engineer would do the same.",
     stateMutations: { harnessState: 'executing_tool', currentTool: 'run_tests', apiCallCount: 3 },
-    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'run_tests', args: { target: 'tests/auth.test.js' }, toolUseId: 'toolu_a2_03' },
+    chatUpdate: { role: 'assistant', content: "Bug confirmed — expiry is in seconds but Date.now() is milliseconds. Let me run the tests to see the current state.", toolCalls: [{ name: 'run_tests', input: { target: 'tests/auth.test.js' }, id: 'toolu_a2_03' }] },
     contextState: mk(500, 1892, 1580),
     activeAgent: null, compactionData: null,
   },
@@ -896,7 +896,7 @@ const STEPS = [
     message: { result: 'FAIL — 1 test failing: "should accept a valid, non-expired token"' },
     narration: "Test results: 3 pass, 1 fails. The failing test is \"should accept a valid, non-expired token\" — exactly what we'd expect from this bug. Interesting: the \"should reject an expired token\" test passes, but only because the bug makes ALL tokens appear expired. The tests are misleading. Context now at ~5,700 tokens.",
     stateMutations: { harnessState: 'injecting_result', currentTool: null },
-    chatUpdate: { role: 'tool_result', content: 'FAIL — 1 failing: should accept a valid, non-expired token', toolUseId: 'toolu_a2_03' },
+    chatUpdate: { role: 'assistant', toolResults: [{ content: 'FAIL — 1 failing: should accept a valid, non-expired token', tool_use_id: 'toolu_a2_03', isError: true }] },
     contextState: mk(500, 1892, 2480),
     activeAgent: null, compactionData: null,
   },
@@ -904,11 +904,11 @@ const STEPS = [
     id: 'act2-step10', act: 2, phase: 'api_response',
     label: 'Model Returns tool_use — write_file (fix)',
     activeComponents: [C.API, C.HARNESS],
-    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #4' },
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response_tool_use', label: 'Response #4' },
     message: API.act2Response4,
     narration: "The model now writes the fix: change line 23 from token.expiry < Date.now() to token.expiry * 1000 < Date.now(). The write_file tool call contains the complete corrected file. Note: this is the model requesting the write — the harness will execute it.",
     stateMutations: { harnessState: 'executing_tool', currentTool: 'write_file', apiCallCount: 4 },
-    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'write_file', args: { path: 'src/auth/auth.js', content: '...(fixed content)...' }, toolUseId: 'toolu_a2_04' },
+    chatUpdate: { role: 'assistant', content: "The fix is to multiply token.expiry by 1000 before comparing with Date.now().", toolCalls: [{ name: 'write_file', input: { path: 'src/auth/auth.js' }, id: 'toolu_a2_04' }] },
     contextState: mk(500, 2617, 2480),
     activeAgent: null, compactionData: null,
   },
@@ -920,7 +920,7 @@ const STEPS = [
     message: { file: 'src/auth/auth.js', action: 'written', lines: 48 },
     narration: "The harness writes the fixed file to disk. The side effect has happened in the real world. The model requested it, the harness executed it. This clean separation — model requests, harness acts — is fundamental to the agentic architecture.",
     stateMutations: { harnessState: 'injecting_result', currentTool: null },
-    chatUpdate: { role: 'tool_result', content: 'File written: src/auth/auth.js', toolUseId: 'toolu_a2_04' },
+    chatUpdate: { role: 'assistant', toolResults: [{ content: 'File written: src/auth/auth.js', tool_use_id: 'toolu_a2_04' }] },
     contextState: mk(500, 2617, 2650),
     activeAgent: null, compactionData: null,
   },
@@ -928,11 +928,11 @@ const STEPS = [
     id: 'act2-step12', act: 2, phase: 'api_response',
     label: 'Model Returns tool_use — Verify Tests',
     activeComponents: [C.API, C.HARNESS],
-    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #5' },
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response_tool_use', label: 'Response #5' },
     message: API.act2Response5,
     narration: "The model doesn't stop at writing the fix — it runs the tests again to verify. This is the self-correction loop in action: try → observe → verify. If the tests still failed, the model would iterate. It won't return end_turn until it has evidence that the fix works.",
     stateMutations: { harnessState: 'executing_tool', currentTool: 'run_tests', apiCallCount: 5 },
-    chatUpdate: { role: 'assistant', type: 'tool_use', tool: 'run_tests', args: {}, toolUseId: 'toolu_a2_05' },
+    chatUpdate: { role: 'assistant', content: "Fix applied. Let me verify by running the tests again.", toolCalls: [{ name: 'run_tests', input: {}, id: 'toolu_a2_05' }] },
     contextState: mk(500, 3102, 2650),
     activeAgent: null, compactionData: null,
   },
@@ -944,7 +944,7 @@ const STEPS = [
     message: { result: 'PASS — 4/4 tests passing' },
     narration: "All 4 tests pass. The fix is verified. The harness injects the successful test output as a tool_result. Now the model has all the evidence it needs to write a final summary and return end_turn.",
     stateMutations: { harnessState: 'injecting_result', currentTool: null },
-    chatUpdate: { role: 'tool_result', content: 'PASS — 4/4 tests passing', toolUseId: 'toolu_a2_05' },
+    chatUpdate: { role: 'assistant', toolResults: [{ content: 'PASS — 4/4 tests passing', tool_use_id: 'toolu_a2_05' }] },
     contextState: mk(500, 3102, 3350),
     activeAgent: null, compactionData: null,
   },
@@ -952,7 +952,7 @@ const STEPS = [
     id: 'act2-step14', act: 2, phase: 'api_response',
     label: 'Model Returns end_turn — Done',
     activeComponents: [C.API, C.HARNESS],
-    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Response #6' },
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response_end_turn', label: 'Response #6' },
     message: API.act2Response6,
     narration: "stop_reason: \"end_turn\". The model is done. 6 API calls, 5 tool executions, 1 verified fix. Compare this to Act 1: the model didn't guess — it found the bug by reading the right files, confirmed it by running the tests, applied the fix, and verified it. But look at the context window: ~8,200 tokens after just 2 files and a few test runs. For a large codebase, this grows fast.",
     stateMutations: { systemPhase: 'idle', harnessState: 'idle', apiCallCount: 0, currentTool: null },
@@ -1378,19 +1378,23 @@ function useSimulation() {
   }, []);
 
   const computeConversationAtStep = useCallback((targetIndex) => {
+    const targetAct = STEPS[targetIndex]?.act || 1;
     const history = [];
     for (let i = 0; i <= targetIndex; i++) {
       const step = STEPS[i];
-      if (step && step.chatUpdate) history.push({ ...step.chatUpdate, stepId: step.id });
+      if (step && step.act === targetAct && step.chatUpdate) {
+        history.push({ ...step.chatUpdate, stepId: step.id });
+      }
     }
     return history;
   }, []);
 
   const computeMessageLogAtStep = useCallback((targetIndex) => {
+    const targetAct = STEPS[targetIndex]?.act || 1;
     const log = [];
     for (let i = 0; i <= targetIndex; i++) {
       const step = STEPS[i];
-      if (step && step.message && step.messageFlow) {
+      if (step && step.act === targetAct && step.message && step.messageFlow) {
         log.push({
           stepId: step.id, act: step.act, phase: step.phase,
           label: step.label, flow: step.messageFlow,
