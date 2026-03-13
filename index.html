@@ -1000,6 +1000,7 @@ const STEPS = [
     chatUpdate: { role: 'user', content: "The authentication module has a bug — users can't log in. Coordinate the team to find and fix it." },
     contextState: mk(500, 387, 0),
     activeAgent: 'orchestrator', compactionData: null,
+    agentContexts: { orchestrator: 0.44, explorer: 0, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step2', act: 3, phase: 'orchestrator',
@@ -1012,6 +1013,7 @@ const STEPS = [
     chatUpdate: { role: 'assistant', content: API.orchestratorResponse.content[0].text, agent: 'orchestrator' },
     contextState: mk(500, 485, 0),
     activeAgent: 'orchestrator', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 0, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step3', act: 3, phase: 'handoff',
@@ -1024,6 +1026,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 150, 0),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 0.33, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step4', act: 3, phase: 'explorer',
@@ -1036,6 +1039,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 400, 850),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 0.88, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step5', act: 3, phase: 'explorer',
@@ -1048,6 +1052,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 750, 1550),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 1.4, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step6', act: 3, phase: 'explorer',
@@ -1060,6 +1065,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 1200, 3100),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 2.4, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step7', act: 3, phase: 'explorer',
@@ -1072,6 +1078,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 24000, 61500),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step8', act: 3, phase: 'explorer',
@@ -1084,6 +1091,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 24000, 61500),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step9', act: 3, phase: 'handoff',
@@ -1096,6 +1104,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 362, 0),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0.43, reviewer: 0 },
   },
   {
     id: 'act3-step10', act: 3, phase: 'builder',
@@ -1108,6 +1117,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 800, 0),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0.65, reviewer: 0 },
   },
   {
     id: 'act3-step11', act: 3, phase: 'builder',
@@ -1120,6 +1130,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 800, 1100),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0 },
   },
   {
     id: 'act3-step12', act: 3, phase: 'handoff',
@@ -1132,6 +1143,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 280, 0),
     activeAgent: 'reviewer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.39 },
   },
   {
     id: 'act3-step13', act: 3, phase: 'reviewer',
@@ -1144,6 +1156,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 500, 900),
     activeAgent: 'reviewer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.95 },
   },
   {
     id: 'act3-step14', act: 3, phase: 'reviewer',
@@ -1156,6 +1169,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 500, 900),
     activeAgent: 'reviewer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.95 },
   },
   {
     id: 'act3-step15', act: 3, phase: 'builder',
@@ -1168,6 +1182,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 900, 1100),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.25, reviewer: 0.95 },
   },
   {
     id: 'act3-step16', act: 3, phase: 'insight',
@@ -1180,6 +1195,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 900, 1100),
     activeAgent: null, compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.25, reviewer: 0.95 },
   },
 
   // ===========================================================================
@@ -1911,15 +1927,16 @@ function Act2Diagram({ activeComponents, messageFlow, stepKey }) {
 // ---------------------------------------------------------------------------
 // Act 3 Diagram — multi-agent pipeline with mini context meters
 // ---------------------------------------------------------------------------
-function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, activeAgent }) {
+function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, activeAgent, agentContexts }) {
   const active = new Set(activeComponents || []);
 
-  // Per-agent context percents for mini meters
+  // Per-agent context percents from step data (retains last-known values for inactive agents)
+  const ac = agentContexts || {};
   const agentPercents = {
-    [C.ORCHESTRATOR]: activeAgent === 'orchestrator' ? (contextState?.percentUsed || 0) : 0,
-    [C.EXPLORER]:     activeAgent === 'explorer'     ? (contextState?.percentUsed || 0) : 0,
-    [C.BUILDER]:      activeAgent === 'builder'      ? (contextState?.percentUsed || 0) : 0,
-    [C.REVIEWER]:     activeAgent === 'reviewer'     ? (contextState?.percentUsed || 0) : 0,
+    [C.ORCHESTRATOR]: ac.orchestrator || 0,
+    [C.EXPLORER]:     ac.explorer || 0,
+    [C.BUILDER]:      ac.builder || 0,
+    [C.REVIEWER]:     ac.reviewer || 0,
   };
 
   return (
@@ -1933,6 +1950,7 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
         <path id="bld-to-rev-a3"  d="M 305 216 L 305 290"/>
         <path id="rev-to-bld-a3"  d="M 265 290 L 265 216"/>
         <path id="exp-tool-a3"    d="M 370 50 L 430 50"/>
+        <path id="rev-tool-a3"   d="M 370 310 C 410 310 430 80 430 54"/>
         <path id="bld-write-a3"   d="M 370 182 L 430 182"/>
         <path id="bld-tests-a3"   d="M 370 195 C 420 195 430 240 430 244"/>
       </defs>
@@ -1947,6 +1965,7 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       <line x1="370" y1="54" x2="430" y2="54" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
       <line x1="370" y1="186" x2="430" y2="186" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
       <path d="M 370 198 C 420 198 430 242 430 246" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <path d="M 370 310 C 410 310 430 80 430 54" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.4"/>
 
       {/* Handoff labels */}
       <text x="205" y="48" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">task</text>
@@ -1982,8 +2001,11 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       {messageFlow && messageFlow.type === 'review_notes' && (
         <FlowPacket pathId="rev-to-bld-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
-      {active.has(C.TOOL_READ) && (
+      {active.has(C.TOOL_READ) && activeAgent === 'explorer' && (
         <FlowPacket pathId="exp-tool-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
+      )}
+      {active.has(C.TOOL_READ) && activeAgent === 'reviewer' && (
+        <FlowPacket pathId="rev-tool-a3" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_WRITE) && (
         <FlowPacket pathId="bld-write-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
@@ -2117,14 +2139,14 @@ function Act4Diagram({ activeComponents, messageFlow, stepKey }) {
 // ---------------------------------------------------------------------------
 // Main ArchitectureDiagram — switches layout based on currentAct
 // ---------------------------------------------------------------------------
-function ArchitectureDiagram({ currentAct, activeComponents, messageFlow, stepKey, contextState, activeAgent }) {
+function ArchitectureDiagram({ currentAct, activeComponents, messageFlow, stepKey, contextState, activeAgent, agentContexts }) {
   switch (currentAct) {
     case 1:
       return <Act1Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
     case 2:
       return <Act2Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
     case 3:
-      return <Act3Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey} contextState={contextState} activeAgent={activeAgent}/>;
+      return <Act3Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey} contextState={contextState} activeAgent={activeAgent} agentContexts={agentContexts}/>;
     case 4:
       return <Act4Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
     default:
@@ -3382,6 +3404,7 @@ function App() {
                     stepKey={step?.id || 'init'}
                     contextState={contextState}
                     activeAgent={step?.activeAgent}
+                    agentContexts={step?.agentContexts}
                   />
                 </div>
               </div>

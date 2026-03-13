@@ -672,6 +672,7 @@ function App() {
                     stepKey={step?.id || 'init'}
                     contextState={contextState}
                     activeAgent={step?.activeAgent}
+                    agentContexts={step?.agentContexts}
                   />
                 </div>
               </div>

@@ -976,6 +976,7 @@ const STEPS = [
     chatUpdate: { role: 'user', content: "The authentication module has a bug — users can't log in. Coordinate the team to find and fix it." },
     contextState: mk(500, 387, 0),
     activeAgent: 'orchestrator', compactionData: null,
+    agentContexts: { orchestrator: 0.44, explorer: 0, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step2', act: 3, phase: 'orchestrator',
@@ -988,6 +989,7 @@ const STEPS = [
     chatUpdate: { role: 'assistant', content: API.orchestratorResponse.content[0].text, agent: 'orchestrator' },
     contextState: mk(500, 485, 0),
     activeAgent: 'orchestrator', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 0, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step3', act: 3, phase: 'handoff',
@@ -1000,6 +1002,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 150, 0),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 0.33, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step4', act: 3, phase: 'explorer',
@@ -1012,6 +1015,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 400, 850),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 0.88, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step5', act: 3, phase: 'explorer',
@@ -1024,6 +1028,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 750, 1550),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 1.4, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step6', act: 3, phase: 'explorer',
@@ -1036,6 +1041,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 1200, 3100),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 2.4, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step7', act: 3, phase: 'explorer',
@@ -1048,6 +1054,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 24000, 61500),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step8', act: 3, phase: 'explorer',
@@ -1060,6 +1067,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 24000, 61500),
     activeAgent: 'explorer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0, reviewer: 0 },
   },
   {
     id: 'act3-step9', act: 3, phase: 'handoff',
@@ -1072,6 +1080,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 362, 0),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0.43, reviewer: 0 },
   },
   {
     id: 'act3-step10', act: 3, phase: 'builder',
@@ -1084,6 +1093,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 800, 0),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 0.65, reviewer: 0 },
   },
   {
     id: 'act3-step11', act: 3, phase: 'builder',
@@ -1096,6 +1106,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 800, 1100),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0 },
   },
   {
     id: 'act3-step12', act: 3, phase: 'handoff',
@@ -1108,6 +1119,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 280, 0),
     activeAgent: 'reviewer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.39 },
   },
   {
     id: 'act3-step13', act: 3, phase: 'reviewer',
@@ -1120,6 +1132,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 500, 900),
     activeAgent: 'reviewer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.95 },
   },
   {
     id: 'act3-step14', act: 3, phase: 'reviewer',
@@ -1132,6 +1145,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 500, 900),
     activeAgent: 'reviewer', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.2, reviewer: 0.95 },
   },
   {
     id: 'act3-step15', act: 3, phase: 'builder',
@@ -1144,6 +1158,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 900, 1100),
     activeAgent: 'builder', compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.25, reviewer: 0.95 },
   },
   {
     id: 'act3-step16', act: 3, phase: 'insight',
@@ -1156,6 +1171,7 @@ const STEPS = [
     chatUpdate: null,
     contextState: mk(500, 900, 1100),
     activeAgent: null, compactionData: null,
+    agentContexts: { orchestrator: 0.49, explorer: 43, builder: 1.25, reviewer: 0.95 },
   },
 
   // ===========================================================================
