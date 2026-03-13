@@ -1165,7 +1165,7 @@ const STEPS = [
     label: 'Act 3 Summary — Context Sharding',
     activeComponents: [C.ORCHESTRATOR, C.EXPLORER, C.BUILDER, C.REVIEWER],
     messageFlow: null,
-    message: { explorer_peak: '86,000 tokens (43%)', builder_start: '862 tokens (0.4%)', handoff_size: '312 tokens' },
+    message: null,
     narration: "The Explorer used 86,000 tokens understanding the codebase. The Builder received 312 tokens and had 99.6% of its context free. Each agent was doing one thing, with the right amount of information. No agent was overwhelmed. This is context sharding — you get scale by dividing the problem, not by giving one agent infinite memory.",
     stateMutations: { activeAgent: null },
     chatUpdate: { role: 'assistant', agent: 'orchestrator', content: "All agents complete. Bug fixed in `src/auth/auth.js`, tests passing, reviewer approved. Task done." },
