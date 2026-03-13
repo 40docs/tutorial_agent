@@ -28,10 +28,10 @@ const ACT1_PATHS = {
 
 // Act 3: Multi-agent pipeline with orchestrator, explorer, builder, reviewer
 const ACT3_RECTS = {
-  [C.ORCHESTRATOR]: { x: 30,  y: 30,  w: 140, h: 56, label: 'Orchestrator', colorKey: 'agents' },
-  [C.EXPLORER]:     { x: 240, y: 30,  w: 130, h: 56, label: 'Explorer', colorKey: 'agents' },
-  [C.BUILDER]:      { x: 240, y: 160, w: 130, h: 56, label: 'Builder', colorKey: 'agents' },
-  [C.REVIEWER]:     { x: 240, y: 290, w: 130, h: 56, label: 'Reviewer', colorKey: 'agents' },
+  [C.ORCHESTRATOR]: { x: 30,  y: 30,  w: 140, h: 56, label: 'Orchestrator', colorKey: 'harness' },
+  [C.EXPLORER]:     { x: 240, y: 30,  w: 130, h: 56, label: 'Explorer', colorKey: 'harness' },
+  [C.BUILDER]:      { x: 240, y: 160, w: 130, h: 56, label: 'Builder', colorKey: 'harness' },
+  [C.REVIEWER]:     { x: 240, y: 290, w: 130, h: 56, label: 'Reviewer', colorKey: 'harness' },
   [C.TOOL_READ]:    { x: 430, y: 30,  w: 110, h: 48, label: 'read_file', colorKey: 'tools' },
   [C.TOOL_WRITE]:   { x: 430, y: 160, w: 110, h: 48, label: 'write_file', colorKey: 'tools' },
   [C.TOOL_TESTS]:   { x: 430, y: 220, w: 110, h: 48, label: 'run_tests',  colorKey: 'tools' },
@@ -474,23 +474,23 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
       <CompBox rect={ACT3_RECTS[C.TOOL_TESTS]}   active={active.has(C.TOOL_TESTS)}   stepKey={stepKey}/>
 
       {/* Mini context meters for each agent box */}
-      <MiniContextMeter x={242} y={74}  w={90} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.agents.border}/>
-      <MiniContextMeter x={242} y={74}  w={90} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.agents.border}/>
-      <MiniContextMeter x={242} y={204} w={90} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.agents.border}/>
-      <MiniContextMeter x={242} y={334} w={90} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.agents.border}/>
+      <MiniContextMeter x={55} y={74}  w={90} h={5} percent={agentPercents[C.ORCHESTRATOR]} color={COLORS.harness.border}/>
+      <MiniContextMeter x={260} y={74}  w={90} h={5} percent={agentPercents[C.EXPLORER]}     color={COLORS.harness.border}/>
+      <MiniContextMeter x={260} y={204} w={90} h={5} percent={agentPercents[C.BUILDER]}      color={COLORS.harness.border}/>
+      <MiniContextMeter x={260} y={334} w={90} h={5} percent={agentPercents[C.REVIEWER]}     color={COLORS.harness.border}/>
 
       {/* Animated flow packets */}
       {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.EXPLORER && (
-        <FlowPacket pathId="orch-to-exp-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+        <FlowPacket pathId="orch-to-exp-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
       {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.BUILDER && (
-        <FlowPacket pathId="exp-to-bld-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+        <FlowPacket pathId="exp-to-bld-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
       {messageFlow && messageFlow.type === 'handoff' && messageFlow.to === C.REVIEWER && (
-        <FlowPacket pathId="bld-to-rev-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+        <FlowPacket pathId="bld-to-rev-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
       {messageFlow && messageFlow.type === 'review_notes' && (
-        <FlowPacket pathId="rev-to-bld-a3" color={COLORS.agents.border} stepKey={stepKey}/>
+        <FlowPacket pathId="rev-to-bld-a3" color={COLORS.harness.border} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_READ) && (
         <FlowPacket pathId="exp-tool-a3" color={COLORS.tools.border} duration={0.9} stepKey={stepKey}/>
@@ -504,12 +504,12 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
 
       {/* Legend */}
       <g transform="translate(30, 355)">
-        <rect width="10" height="10" rx="2" fill={COLORS.agents.bg} stroke={COLORS.agents.border}/>
-        <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Agent</text>
-        <rect x="65" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
-        <text x="79" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Tools</text>
-        <rect x="125" width="14" height="5" rx="2" fill={COLORS.agents.border} opacity="0.7"/>
-        <text x="142" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Context meter</text>
+        <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
+        <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Agent (harness)</text>
+        <rect x="120" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
+        <text x="134" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Tools</text>
+        <rect x="180" width="14" height="5" rx="2" fill={COLORS.harness.border} opacity="0.7"/>
+        <text x="197" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Context meter</text>
       </g>
     </svg>
   );
