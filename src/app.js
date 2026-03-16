@@ -614,12 +614,8 @@ function App() {
       return (
         <div style={{ height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: 4 }}>
           <CompactionDiffView compactionData={step.compactionData}/>
-          {showWhatWasLost && <WhatWasLostPanel compactionData={step.compactionData}/>}
         </div>
       );
-    }
-    if (showWhatWasLost) {
-      return <WhatWasLostPanel compactionData={step.compactionData}/>;
     }
     return (
       <PayloadInspector
@@ -659,23 +655,28 @@ function App() {
           {/* RIGHT: Internals (54%) */}
           <div style={{ width: '54%', display: 'flex', flexDirection: 'column', padding: '8px 8px 8px 4px', gap: 6, minHeight: 0 }}>
 
-            {/* Architecture Diagram */}
+            {/* Architecture Diagram — or What Was Lost panel on compaction review step */}
             <div style={{ flex: '4 1 0%', minHeight: 0, overflow: 'hidden', ...PANEL_STYLE }}>
-              <div style={PANEL_HEADER_STYLE}>Architecture</div>
-              {/* position:relative + absolute child ensures SVG fills panel regardless of aspect ratio */}
-              <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#0f172a' }}>
-                <div style={{ position: 'absolute', inset: 0 }}>
-                  <ArchitectureDiagram
-                    currentAct={currentAct}
-                    activeComponents={step?.activeComponents || []}
-                    messageFlow={step?.messageFlow || null}
-                    stepKey={step?.id || 'init'}
-                    contextState={contextState}
-                    activeAgent={step?.activeAgent}
-                    agentContexts={step?.agentContexts}
-                  />
+              <div style={PANEL_HEADER_STYLE}>{showWhatWasLost ? 'What Was Lost' : 'Architecture'}</div>
+              {showWhatWasLost ? (
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 10px' }}>
+                  <WhatWasLostPanel compactionData={step.compactionData}/>
                 </div>
-              </div>
+              ) : (
+                <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#0f172a' }}>
+                  <div style={{ position: 'absolute', inset: 0 }}>
+                    <ArchitectureDiagram
+                      currentAct={currentAct}
+                      activeComponents={step?.activeComponents || []}
+                      messageFlow={step?.messageFlow || null}
+                      stepKey={step?.id || 'init'}
+                      contextState={contextState}
+                      activeAgent={step?.activeAgent}
+                      agentContexts={step?.agentContexts}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Context Meter — slim strip */}

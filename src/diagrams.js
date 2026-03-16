@@ -513,109 +513,169 @@ function Act3Diagram({ activeComponents, messageFlow, stepKey, contextState, act
 }
 
 // ---------------------------------------------------------------------------
-// Act 4 Diagram — agentic loop + compaction engine + audit log
+// Act 4 Diagram — Act 2 layout + Audit Log (compaction is a Context Manager function)
 // ---------------------------------------------------------------------------
-function Act4Diagram({ activeComponents, messageFlow, stepKey }) {
+function Act4Diagram({ activeComponents, messageFlow, stepKey, contextState }) {
   const active = new Set(activeComponents || []);
   const hasToolFlow = active.has(C.TOOL_READ) || active.has(C.TOOL_TESTS) || active.has(C.TOOL_WRITE);
 
+  // Determine if we're in a compaction step
+  const stepNum = parseInt((stepKey || '').replace('act4-step', '')) || 0;
+  const isCompacting = stepNum >= 4 && stepNum <= 8;
+
+  // stop_reason? box lights up when the harness is processing a model response:
+  // - tool_call flow = response received, stop_reason was 'tool_use', dispatching tools
+  // - step 4 = response received but context manager paused before dispatch
+  const stopReasonActive = hasToolFlow || (messageFlow?.type?.includes('api_response')) || stepNum === 4;
+
+  // Same box layout as Act 2 + Audit Log below
+  const ctxMgr   = { x: 22, y: 26,  w: 516, h: 42, label: 'Context Manager',  colorKey: 'harness' };
+  const stopRsn  = { x: 22, y: 97,  w: 516, h: 40, label: 'stop_reason?',     colorKey: 'genai' };
+  const dispatch = { x: 22, y: 166, w: 328, h: 38, label: 'Tool Dispatch',    colorKey: 'harness' };
+  const doneBox  = { x: 365, y: 166, w: 173, h: 38, label: 'DONE',            colorKey: 'genai' };
+  const readF    = { x: 22,  y: 233, w: 102, h: 26, label: 'read_file',       colorKey: 'tools' };
+  const runT     = { x: 130, y: 233, w: 102, h: 26, label: 'run_tests',       colorKey: 'tools' };
+  const writeF   = { x: 238, y: 233, w: 102, h: 26, label: 'write_file',      colorKey: 'tools' };
+  const apiBox   = { x: 610, y: 54,  w: 185, h: 56, label: 'API / Model',     colorKey: 'genai' };
+  const auditLog = { x: 22,  y: 310, w: 200, h: 46, label: 'Audit Log',       colorKey: 'agents' };
+
   return (
-    <svg viewBox="0 0 620 500" style={{ width: '100%', height: '100%' }}>
+    <svg viewBox="0 0 900 390" style={{ width: '100%', height: '100%' }}>
       <defs>
         <pattern id="dots-a4" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="#1e293b"/>
         </pattern>
-        <path id="send-req-a4"   d="M 150 140 L 150 115 L 456 115 L 456 148"/>
-        <path id="get-resp-a4"   d="M 360 196 L 360 212 L 150 212 L 150 196"/>
-        <path id="to-tool-a4"    d="M 456 185 C 530 240 20 240 90 290"/>
-        <path id="tool-back-a4"  d="M 90 290 C 20 240 20 212 150 212"/>
-        <path id="dispatch-r-a4" d="M 150 315 L 200 315"/>
-        <path id="dispatch-t-a4" d="M 150 315 C 200 315 280 315 310 315"/>
-        <path id="dispatch-w-a4" d="M 150 315 C 200 315 380 315 420 315"/>
-        <path id="compact-a4"    d="M 90 196 C 70 340 70 400 105 420"/>
-        <path id="to-audit-a4"   d="M 180 448 L 230 448"/>
+        {/* Act 2 flow paths (reused with -a4 suffix) */}
+        <path id="send-req-a4"         d="M 538 47 L 610 70"/>
+        <path id="get-resp-a4"         d="M 610 92 L 538 117"/>
+        <path id="stop-to-dispatch-a4" d="M 186 137 L 186 166"/>
+        <path id="stop-to-done-a4"     d="M 451 137 L 451 166"/>
+        <path id="dispatch-r-a4"       d="M 186 204 L 73 233"/>
+        <path id="dispatch-t-a4"       d="M 186 204 L 181 233"/>
+        <path id="dispatch-w-a4"       d="M 186 204 L 289 233"/>
+        <path id="tool-back-a4"        d="M 22 246 C -4 180 -4 60 22 47"/>
+        {/* Audit log path: harness left edge down to audit log */}
+        <path id="to-audit-a4"         d="M 22 68 C -14 180 -14 280 22 310"/>
       </defs>
-      <rect width="620" height="500" fill="#0f172a"/>
-      <rect width="620" height="500" fill="url(#dots-a4)"/>
+      <rect width="900" height="390" fill="#0f172a"/>
+      <rect width="900" height="390" fill="url(#dots-a4)"/>
 
-      {/* Structural lines — main loop */}
-      {/* Request above (Harness → API → decision) */}
-      <path d="M 150 140 L 150 115 L 456 115 L 456 148" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* API notch */}
-      <line x1="290" y1="140" x2="290" y2="115" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
-      {/* Response below (API → Harness) */}
-      <path d="M 360 196 L 360 212 L 150 212 L 150 196" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* Tool dispatch loop */}
-      <path d="M 456 188 C 530 240 20 240 90 290" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <path d="M 90 290 C 20 240 20 212 150 212" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="150" y1="315" x2="200" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="150" y1="315" x2="310" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      <line x1="150" y1="315" x2="420" y2="315" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
-      {/* Compaction lines */}
-      <path d="M 90 196 C 70 340 70 400 105 420" fill="none" stroke={active.has(C.COMPACTOR) ? COLORS.compaction.border : '#334155'} strokeWidth={active.has(C.COMPACTOR) ? 2 : 1} strokeDasharray={active.has(C.COMPACTOR) ? '0' : '4 3'}/>
-      <line x1="180" y1="448" x2="230" y2="448" stroke={active.has(C.AUDIT_LOG) ? COLORS.agents.border : '#334155'} strokeWidth="1" strokeDasharray="4 3"/>
+      {/* ── Harness container (same as Act 2) ── */}
+      <rect x="10" y="12" width="540" height="262" rx="10"
+            fill={COLORS.harness.bg} opacity="0.06"/>
+      <rect x="10" y="12" width="540" height="262" rx="10"
+            fill="none" stroke={isCompacting ? COLORS.compaction.border : COLORS.harness.border} strokeWidth="1.5"
+            strokeDasharray="6 4" opacity={active.has(C.HARNESS) ? 0.6 : 0.25}/>
+      <text x="20" y="8" fontSize="8" fill={COLORS.harness.text} fontFamily="monospace"
+            fontWeight="600" letterSpacing="0.08em">HARNESS — THE RUNTIME</text>
 
-      {/* Flow labels */}
-      <text x="255" y="106" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">API call →</text>
-      <text x="255" y="226" textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="monospace">← response</text>
+      {/* ── Harness boundary (dashed vertical line + stacked label) ── */}
+      <line x1="572" y1="12" x2="572" y2="274" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.4"/>
+      <text x="572" y="36" textAnchor="middle" fontSize="7" fill="#64748b" fontFamily="monospace">harness</text>
+      <text x="572" y="46" textAnchor="middle" fontSize="7" fill="#64748b" fontFamily="monospace">boundary</text>
+      <text x="702" y="38" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">external service</text>
 
-      {/* 70% threshold label */}
-      <text x="30" y="245" fontSize="8" fill={COLORS.compaction.text} fontFamily="monospace" opacity={active.has(C.COMPACTOR) ? 1 : 0.4}>
-        70% threshold ↑
-      </text>
+      {/* ── Vertical flow labels between boxes ── */}
+      <text x="280" y="86" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">↓ response</text>
+      <text x="186" y="155" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">tool_use ↓</text>
+      <text x="451" y="155" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">end_turn ↓</text>
+      <text x="186" y="222" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">↓</text>
+      <text x="180" y="268" textAnchor="middle" fontSize="7" fill="#64748b" fontFamily="monospace">↑ result → messages[] → loop</text>
 
-      {/* Boxes */}
-      <CompBox rect={ACT4_RECTS[C.HARNESS]}    active={active.has(C.HARNESS)}    stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS[C.API]}         active={active.has(C.API)}         stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS['decision']}    active={active.has(C.API)}         stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS['dispatch']}    active={hasToolFlow}               stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS[C.TOOL_READ]}   active={active.has(C.TOOL_READ)}   stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS[C.TOOL_TESTS]}  active={active.has(C.TOOL_TESTS)}  stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS[C.TOOL_WRITE]}  active={active.has(C.TOOL_WRITE)}  stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS[C.COMPACTOR]}   active={active.has(C.COMPACTOR)}   stepKey={stepKey}/>
-      <CompBox rect={ACT4_RECTS[C.AUDIT_LOG]}   active={active.has(C.AUDIT_LOG)}   stepKey={stepKey}/>
+      {/* ── Boundary crossing labels ── */}
+      <text x="572" y="62" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">→ call</text>
+      <text x="572" y="108" textAnchor="middle" fontSize="8" fill="#64748b" fontFamily="monospace">resp ←</text>
 
-      {/* Animated flow packets */}
+      {/* ── Structural lines (dashed) — same as Act 2 ── */}
+      <line x1="538" y1="47" x2="610" y2="70" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="607,66 614,70 607,74" fill="#334155"/>
+      <line x1="610" y1="92" x2="538" y2="117" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <polygon points="541,113 532,117 541,121" fill="#334155"/>
+
+      {/* Vertical connectors inside harness */}
+      <line x1="280" y1="68" x2="280" y2="97" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" opacity="0.4"/>
+      <line x1="186" y1="137" x2="186" y2="166" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.5"/>
+      <polygon points="182,163 186,170 190,163" fill="#334155" opacity="0.5"/>
+      <line x1="451" y1="137" x2="451" y2="166" stroke="#334155" strokeWidth="1" strokeDasharray="4 3" opacity="0.5"/>
+      <polygon points="447,163 451,170 455,163" fill="#334155" opacity="0.5"/>
+
+      {/* Dispatch → tools (fan out) */}
+      <line x1="186" y1="204" x2="73" y2="233" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="186" y1="204" x2="181" y2="233" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+      <line x1="186" y1="204" x2="289" y2="233" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* Loop-back curve: tools left → ctxMgr left */}
+      <path d="M 22 246 C -4 180 -4 60 22 47" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 3"/>
+
+      {/* ── Audit Log connection: harness left edge down to audit log ── */}
+      <path d="M 22 68 C -14 180 -14 280 22 310" fill="none"
+            stroke={active.has(C.AUDIT_LOG) ? COLORS.agents.border : '#334155'}
+            strokeWidth={active.has(C.AUDIT_LOG) ? 1.5 : 1}
+            strokeDasharray="4 3"/>
+
+      {/* Compaction label (appears when context is high) */}
+      {isCompacting && (
+        <text x="280" y="62" textAnchor="middle" fontSize="7" fill={COLORS.compaction.text} fontFamily="monospace" fontWeight="600">
+          context &gt; 70% — sending compaction prompt to model
+        </text>
+      )}
+
+      {/* ── Component boxes ── */}
+      <CompBox rect={ctxMgr}   active={active.has(C.HARNESS)}    stepKey={stepKey}/>
+      <CompBox rect={stopRsn}  active={stopReasonActive}          stepKey={stepKey}/>
+      <CompBox rect={dispatch}  active={hasToolFlow}              stepKey={stepKey}/>
+      <CompBox rect={doneBox}   active={false}                    stepKey={stepKey}/>
+      <CompBox rect={readF}     active={active.has(C.TOOL_READ)}  stepKey={stepKey}/>
+      <CompBox rect={runT}      active={active.has(C.TOOL_TESTS)} stepKey={stepKey}/>
+      <CompBox rect={writeF}    active={active.has(C.TOOL_WRITE)} stepKey={stepKey}/>
+      <CompBox rect={apiBox}    active={active.has(C.API)}        stepKey={stepKey}/>
+      <CompBox rect={auditLog}  active={active.has(C.AUDIT_LOG)}  stepKey={stepKey}/>
+
+      {/* Sub-labels inside boxes (same as Act 2) */}
+      {!isCompacting && <text x={280} y={65} textAnchor="middle" fontSize="8" fill={COLORS.harness.text} fontFamily="monospace" opacity="0.6">assembles messages[] on every call</text>}
+      <text x={280} y={134} textAnchor="middle" fontSize="8" fill={COLORS.genai.text} fontFamily="monospace" opacity="0.6">harness reads this to decide next action</text>
+      <text x={186} y={200} textAnchor="middle" fontSize="7" fill={COLORS.harness.text} fontFamily="monospace" opacity="0.5">parse → validate → route</text>
+      <text x={451} y={200} textAnchor="middle" fontSize="7" fill={COLORS.genai.text} fontFamily="monospace" opacity="0.5">loop exits</text>
+      <text x={702} y={98} textAnchor="middle" fontSize="8" fill={COLORS.genai.text} fontFamily="monospace" opacity="0.6">stateless fn</text>
+      <text x={122} y={350} textAnchor="middle" fontSize="7" fill={COLORS.agents.text} fontFamily="monospace" opacity="0.5">full raw history — never compacted</text>
+
+      {/* ── Animated flow packets ── */}
       {messageFlow && messageFlow.type === 'api_request' && (
-        <FlowPacket pathId="send-req-a4" color={COLORS.harness.border} stepKey={stepKey}/>
+        <FlowPacket pathId="send-req-a4" color={isCompacting ? COLORS.compaction.border : COLORS.harness.border} duration={1.8} stepKey={stepKey}/>
       )}
       {messageFlow && messageFlow.type === 'api_response' && (
-        <FlowPacket pathId="get-resp-a4" color={COLORS.genai.border} stepKey={stepKey}/>
+        <FlowPacket pathId="get-resp-a4" color={COLORS.genai.border} duration={1.8} stepKey={stepKey}/>
       )}
-      {messageFlow && messageFlow.type === 'tool_dispatch' && (
-        <FlowPacket pathId="to-tool-a4" color={COLORS.harness.border} stepKey={stepKey}/>
-      )}
-      {messageFlow && messageFlow.type === 'tool_result' && (
-        <FlowPacket pathId="tool-back-a4" color={COLORS.tools.border} stepKey={stepKey}/>
-      )}
+      {messageFlow && messageFlow.type === 'tool_call' && (<>
+        <FlowPacket pathId="get-resp-a4" color={COLORS.genai.border} duration={1.8} stepKey={stepKey}/>
+        <FlowPacket pathId="stop-to-dispatch-a4" color={COLORS.harness.border} duration={0.8} delay={0.6} stepKey={stepKey}/>
+      </>)}
       {active.has(C.TOOL_READ) && (
-        <FlowPacket pathId="dispatch-r-a4" color={COLORS.tools.border} duration={0.8} stepKey={stepKey}/>
+        <FlowPacket pathId="dispatch-r-a4" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_TESTS) && (
-        <FlowPacket pathId="dispatch-t-a4" color={COLORS.tools.border} duration={1.0} stepKey={stepKey}/>
+        <FlowPacket pathId="dispatch-t-a4" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
       {active.has(C.TOOL_WRITE) && (
         <FlowPacket pathId="dispatch-w-a4" color={COLORS.tools.border} duration={1.2} stepKey={stepKey}/>
       )}
-      {active.has(C.COMPACTOR) && (
-        <FlowPacket pathId="compact-a4" color={COLORS.compaction.border} duration={1.5} stepKey={stepKey}/>
+      {messageFlow && messageFlow.type === 'tool_call' && (
+        <FlowPacket pathId="tool-back-a4" color={COLORS.tools.border} duration={2.0} stepKey={stepKey}/>
       )}
-      {active.has(C.AUDIT_LOG) && (
-        <FlowPacket pathId="to-audit-a4" color={COLORS.agents.border} duration={0.8} stepKey={stepKey}/>
+      {active.has(C.AUDIT_LOG) && messageFlow && (
+        <FlowPacket pathId="to-audit-a4" color={COLORS.agents.border} duration={1.2} stepKey={stepKey}/>
       )}
 
       {/* Legend */}
-      <g transform="translate(30, 475)">
+      <g transform="translate(30, 370)">
         <rect width="10" height="10" rx="2" fill={COLORS.harness.bg} stroke={COLORS.harness.border}/>
         <text x="14" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Harness</text>
         <rect x="75" width="10" height="10" rx="2" fill={COLORS.genai.bg} stroke={COLORS.genai.border}/>
         <text x="89" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">API/Model</text>
         <rect x="160" width="10" height="10" rx="2" fill={COLORS.tools.bg} stroke={COLORS.tools.border}/>
         <text x="174" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Tools</text>
-        <rect x="215" width="10" height="10" rx="2" fill={COLORS.compaction.bg} stroke={COLORS.compaction.border}/>
-        <text x="229" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Compaction</text>
-        <rect x="310" width="10" height="10" rx="2" fill={COLORS.agents.bg} stroke={COLORS.agents.border}/>
-        <text x="324" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Storage</text>
+        <rect x="215" width="10" height="10" rx="2" fill={COLORS.agents.bg} stroke={COLORS.agents.border}/>
+        <text x="229" y="9" fontSize="9" fill="#94a3b8" fontFamily="monospace">Audit Log</text>
       </g>
     </svg>
   );
@@ -633,7 +693,7 @@ function ArchitectureDiagram({ currentAct, activeComponents, messageFlow, stepKe
     case 3:
       return <Act3Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey} contextState={contextState} activeAgent={activeAgent} agentContexts={agentContexts}/>;
     case 4:
-      return <Act4Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
+      return <Act4Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey} contextState={contextState}/>;
     default:
       return <Act1Diagram activeComponents={activeComponents} messageFlow={messageFlow} stepKey={stepKey}/>;
   }

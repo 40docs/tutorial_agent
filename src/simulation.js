@@ -1181,10 +1181,18 @@ const STEPS = [
   {
     id: 'act4-step1', act: 4, phase: 'setup',
     label: 'Agentic Loop Resumes',
-    activeComponents: [C.HARNESS, C.TOOL_READ, C.TOOL_TESTS, C.TOOL_WRITE],
-    messageFlow: null,
-    message: null,
-    narration: "Back to the single-agent agentic loop — but now the task is larger. The codebase has more files to explore, and the agent needs to do a thorough investigation. The harness has a critical addition: context window monitoring. When usage exceeds 70%, compaction will be triggered automatically.",
+    activeComponents: [C.HARNESS, C.API],
+    messageFlow: { from: C.HARNESS, to: C.API, type: 'api_request', label: 'Request #1' },
+    message: {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system: "You are a senior software engineer. Analyze the codebase thoroughly — read files, run tests, identify bugs and security issues, and fix them. Be methodical: investigate before fixing, verify after fixing.",
+      tools: TOOL_DEFINITIONS,
+      messages: [
+        { role: 'user', content: 'The authentication system needs a comprehensive audit. Find all bugs and security issues, then fix them.' }
+      ]
+    },
+    narration: "Back to the single-agent agentic loop — but now the task is larger. The codebase has more files to explore, and the agent needs to do a thorough investigation. The context manager has a critical addition: context window monitoring. When usage exceeds 70%, it will pause the loop and send a compaction prompt to the model.",
     stateMutations: { systemPhase: 'processing', harnessState: 'building_request', compactionState: 'idle' },
     chatUpdate: { role: 'user', content: "The authentication system needs a comprehensive audit. Find all bugs and security issues, then fix them." },
     contextState: mk(500, 150, 0),
@@ -1195,10 +1203,26 @@ const STEPS = [
     label: 'Reading Files — Context Growing',
     activeComponents: [C.HARNESS, C.TOOL_READ],
     messageFlow: { from: C.HARNESS, to: C.TOOL_READ, type: 'tool_call', label: 'read_file ×4' },
-    message: { filesRead: ['src/auth/auth.js', 'src/auth/tokens.js', 'src/middleware/authMiddleware.js', 'src/routes/userRoutes.js'] },
+    message: {
+      id: 'msg_act4_002', type: 'message', role: 'assistant',
+      content: [
+        { type: 'text', text: "I'll start by reading all authentication-related source files to understand the system." },
+        { type: 'tool_use', id: 'toolu_c4_01', name: 'read_file', input: { path: 'src/auth/auth.js' } },
+        { type: 'tool_use', id: 'toolu_c4_02', name: 'read_file', input: { path: 'src/auth/tokens.js' } },
+        { type: 'tool_use', id: 'toolu_c4_03', name: 'read_file', input: { path: 'src/middleware/authMiddleware.js' } },
+        { type: 'tool_use', id: 'toolu_c4_04', name: 'read_file', input: { path: 'src/routes/userRoutes.js' } },
+      ],
+      model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+      usage: { input_tokens: 650, output_tokens: 312 }
+    },
     narration: "The agent reads all four source files. Each file adds ~800-1,200 tokens to the messages array. After reading the codebase: system (500) + conversation (12,000) + tool results (28,000) = 40,500 tokens. That's 20% of the context window used, and the agent has only read the source files — not the tests, not the docs.",
     stateMutations: { harnessState: 'executing_tool' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', content: "I'll start with a comprehensive file read to understand the auth system.", toolCalls: [
+      { name: 'read_file', input: { path: 'src/auth/auth.js' }, id: 'toolu_c4_01' },
+      { name: 'read_file', input: { path: 'src/auth/tokens.js' }, id: 'toolu_c4_02' },
+      { name: 'read_file', input: { path: 'src/middleware/authMiddleware.js' }, id: 'toolu_c4_03' },
+      { name: 'read_file', input: { path: 'src/routes/userRoutes.js' }, id: 'toolu_c4_04' },
+    ] },
     contextState: mk(500, 12000, 28000),
     activeAgent: null, compactionData: null,
   },
@@ -1207,32 +1231,49 @@ const STEPS = [
     label: 'More Exploration — Context Approaching Threshold',
     activeComponents: [C.HARNESS, C.TOOL_READ, C.TOOL_TESTS],
     messageFlow: { from: C.HARNESS, to: C.TOOL_READ, type: 'tool_call', label: 'read_file + run_tests' },
-    message: { filesRead: ['tests/auth.test.js', 'package.json', 'src/config.js'], testResults: 'FAIL — multiple issues found' },
+    message: {
+      id: 'msg_act4_003', type: 'message', role: 'assistant',
+      content: [
+        { type: 'text', text: "Found a suspicious comparison on line 23 of auth.js. I need to read the test file and run the tests to confirm." },
+        { type: 'tool_use', id: 'toolu_c4_05', name: 'read_file', input: { path: 'tests/auth.test.js' } },
+        { type: 'tool_use', id: 'toolu_c4_06', name: 'run_tests', input: { target: 'tests/auth.test.js' } },
+      ],
+      model: 'claude-sonnet-4-6', stop_reason: 'tool_use',
+      usage: { input_tokens: 41200, output_tokens: 186 }
+    },
     narration: "The agent reads more files and runs the test suite. More tool results accumulate. The harness's token counter is climbing: 65,000 tokens now (32.5%). The agent has found the timestamp bug and several other issues. The loop continues, adding more context with every iteration.",
     stateMutations: { harnessState: 'injecting_result' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', content: "Found a suspicious comparison on line 23 of auth.js. Need to read tests and config to confirm.", toolCalls: [
+      { name: 'read_file', input: { path: 'tests/auth.test.js' }, id: 'toolu_c4_05' },
+      { name: 'run_tests', input: { target: 'tests/auth.test.js' }, id: 'toolu_c4_06' },
+    ], toolResults: [
+      { content: 'FAIL — 1 of 4 tests failing: "should accept a valid, non-expired token"', tool_use_id: 'toolu_c4_06', isError: true },
+    ] },
     contextState: mk(500, 24000, 41000),
     activeAgent: null, compactionData: null,
   },
   {
     id: 'act4-step4', act: 4, phase: 'threshold',
     label: 'Context Reaches 70% Threshold',
-    activeComponents: [C.HARNESS, C.COMPACTOR],
+    activeComponents: [C.HARNESS],
     messageFlow: null,
-    message: { tokenCount: 140000, threshold: 70, action: 'COMPACTION TRIGGERED' },
-    narration: "The harness's context monitor fires: 140,000 tokens — 70% of the 200,000-token window. The harness pauses the agentic loop. If it continued without intervention, the context would overflow in a few more iterations, causing an API error. Compaction is the only way to continue.",
+    message: { tokenCount: 140000, threshold: '70%', action: 'COMPACTION TRIGGERED', note: 'Context manager pauses the agentic loop' },
+    narration: "The context manager fires: 140,000 tokens — 70% of the 200,000-token window. The harness pauses the agentic loop. If it continued without intervention, the context would overflow in a few more iterations, causing an API error. The context manager will now send a compaction prompt — a separate API call to summarize the full history.",
     stateMutations: { harnessState: 'paused', compactionState: 'triggered' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', content: "Confirmed the timestamp bug. token.expiry is in seconds, Date.now() returns ms. Also found a TODO about refresh token rotation — marking for later. Let me also check the middleware flow and routes for other issues...", toolCalls: [
+      { name: 'read_file', input: { path: 'src/config.js' }, id: 'toolu_c4_07' },
+      { name: 'read_file', input: { path: 'package.json' }, id: 'toolu_c4_08' },
+    ] },
     contextState: mk(500, 42500, 97000),
     activeAgent: null, compactionData: null,
   },
   {
     id: 'act4-step5', act: 4, phase: 'compaction_trigger',
-    label: 'Compaction Engine Activates',
-    activeComponents: [C.HARNESS, C.COMPACTOR, C.AUDIT_LOG],
+    label: 'Saving Raw Context to Audit Log',
+    activeComponents: [C.HARNESS, C.AUDIT_LOG],
     messageFlow: { from: C.HARNESS, to: C.AUDIT_LOG, type: 'internal', label: 'Save raw context' },
     message: { rawContextTokens: 140000, action: 'Writing full history to audit log before compaction' },
-    narration: "Before compacting, the harness writes the full raw context to an external audit log. This is the audit log pattern: the compressed context goes forward into the active window, but the raw history is preserved externally for debugging. The audit log grows unboundedly — but the model doesn't read it during normal operation.",
+    narration: "Before compacting, the context manager writes the full raw context to an external audit log. This is the audit log pattern: the compressed context goes forward into the active window, but the raw history is preserved externally for debugging. The audit log grows unboundedly — but the model doesn't read it during normal operation.",
     stateMutations: { compactionState: 'running' },
     chatUpdate: null,
     contextState: mk(500, 42500, 97000),
@@ -1241,16 +1282,17 @@ const STEPS = [
   {
     id: 'act4-step6', act: 4, phase: 'compaction_run',
     label: 'Compaction Prompt Sent to Model',
-    activeComponents: [C.COMPACTOR, C.API],
-    messageFlow: { from: C.COMPACTOR, to: C.API, type: 'api_request', label: 'Summarize' },
+    activeComponents: [C.HARNESS, C.API],
+    messageFlow: { from: C.HARNESS, to: C.API, type: 'api_request', label: 'Summarize' },
     message: {
       model: 'claude-sonnet-4-6',
-      messages: [{
-        role: 'user',
-        content: "Below is the full history of an agent working on an authentication audit. Produce a dense summary that captures: what has been done, what was found, what decisions were made, and what still needs to happen. Preserve any specific file paths, line numbers, error messages, or technical details that will be needed to continue.\n\n[FULL 140,000 TOKEN HISTORY]"
-      }]
+      max_tokens: 8192,
+      system: "You are a context compaction assistant. Your job is to produce a dense, accurate summary of an agent's work history. The summary will REPLACE the full history in the agent's context window — the agent will not have access to the original after this.\n\nRules:\n- PRESERVE: file paths, line numbers, error messages, variable names, function signatures, decisions made, open questions\n- DISCARD: exploratory dead ends, raw file contents (summarize instead), redundant tool calls, verbose traces\n- FORMAT: structured sections — Findings, Changes Made, Open Items\n- Be specific. 'Fixed a bug' is useless. 'Fixed token.expiry comparison on line 23 of src/auth/auth.js — was comparing seconds to milliseconds' is useful.",
+      messages: [
+        { role: 'user', content: "Here is the full conversation history (140,000 tokens) of an agent working on an authentication security audit. Summarize it so the agent can continue working.\n\n[...messages[0]: system prompt — 500 tokens...]\n[...messages[1]: user request — 'comprehensive auth audit'...]\n[...messages[2]: assistant → tool_use read_file('src/auth/auth.js')...]\n[...messages[3]: tool_result — 48 lines of auth.js source...]\n[...messages[4]: assistant → tool_use read_file('src/auth/tokens.js')...]\n[...messages[5]: tool_result — 38 lines of tokens.js source...]\n[...messages[6]: assistant → tool_use read_file('src/middleware/authMiddleware.js')...]\n[...messages[7]: tool_result — 62 lines of middleware source...]\n[...messages[8]: assistant → 'Found suspicious comparison on line 23...'...]\n[...messages[9]: assistant → tool_use run_tests('tests/auth.test.js')...]\n[...messages[10]: tool_result — FAIL: 1 of 4 tests failing...]\n[...messages[11]: assistant → 'Bug confirmed: token.expiry is seconds, Date.now() is ms'...]\n[...messages[12-68]: additional exploration, config reads, route analysis...]\n[...messages[69]: assistant → 'Also noticed TODO comment about refresh token rotation on line 92 of auth.js — appears to be a known issue marked for future work, not related to current bug'...]\n[...messages[70-142]: more analysis, test exploration, dead ends...]" }
+      ]
     },
-    narration: "The compaction engine sends the full 140,000-token context to the model with explicit instructions: preserve file paths, line numbers, error messages, decisions, open questions. What to discard: exploratory traces, dead ends, raw file contents that were summarized, redundant information. The compaction prompt quality determines the summary quality.",
+    narration: "The context manager sends the full 140,000-token history to the model with a compaction prompt — explicit instructions to summarize. Preserve file paths, line numbers, error messages, decisions, open questions. Discard exploratory traces, dead ends, raw file contents that were already summarized. The quality of this prompt determines the quality of the summary.",
     stateMutations: {},
     chatUpdate: null,
     contextState: mk(500, 42500, 97000),
@@ -1259,12 +1301,12 @@ const STEPS = [
   {
     id: 'act4-step7', act: 4, phase: 'compaction_result',
     label: 'Summary Returned — 140k → 3.5k Tokens',
-    activeComponents: [C.COMPACTOR, C.HARNESS],
-    messageFlow: { from: C.API, to: C.COMPACTOR, type: 'api_response', label: 'Summary' },
+    activeComponents: [C.HARNESS],
+    messageFlow: { from: C.API, to: C.HARNESS, type: 'api_response', label: 'Summary' },
     message: API.compactionSummary,
     narration: "The model returns a 287-token summary. The harness replaces the 140,000-token history with this summary. Context drops from 140,000 to 3,500 tokens — a 97.5% reduction. The loop can now continue. But 136,500 tokens of content were just discarded. What was in them?",
     stateMutations: { compactionState: 'complete', harnessState: 'resuming' },
-    chatUpdate: { type: 'compaction_marker' },
+    chatUpdate: { isCompactionMarker: true, content: '140,000 → 3,500 tokens (97.5% reduction)' },
     contextState: mk(500, 3000, 0),
     activeAgent: null,
     compactionData: {
@@ -1276,7 +1318,7 @@ const STEPS = [
   {
     id: 'act4-step8', act: 4, phase: 'what_was_lost',
     label: 'What Was Lost in Compaction',
-    activeComponents: [C.COMPACTOR],
+    activeComponents: [C.HARNESS],
     messageFlow: null,
     message: API.whatWasLost,
     narration: "Three items from the raw context did not survive compaction. The verbose middleware trace — low risk, just noise. The routes investigation notes — low risk, already resolved. But the third item: a TODO comment in auth.js about unimplemented refresh token rotation. The model judged it a future concern, not relevant to the current task. That judgment may be wrong.",
@@ -1298,7 +1340,11 @@ const STEPS = [
     message: { action: 'Applying the timestamp fix from compacted summary', file: 'src/auth/auth.js' },
     narration: "The loop resumes from the compacted summary. The agent writes the timestamp fix and continues working. From its perspective, the history is intact — it can see what was decided. What it can't see is the refresh token TODO that was compacted away. The agent doesn't know what it doesn't know.",
     stateMutations: { harnessState: 'executing_tool', compactionState: 'idle' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', content: "Resuming from summary. Applying the timestamp fix to auth.js.", toolCalls: [
+      { name: 'write_file', input: { path: 'src/auth/auth.js', description: 'Fix: token.expiry * 1000 < Date.now()' }, id: 'toolu_c4_09' },
+    ], toolResults: [
+      { content: 'File written: src/auth/auth.js', tool_use_id: 'toolu_c4_09' },
+    ] },
     contextState: mk(500, 3500, 400),
     activeAgent: null, compactionData: null,
   },
@@ -1317,12 +1363,12 @@ const STEPS = [
   {
     id: 'act4-step11', act: 4, phase: 'insight',
     label: 'Act 4 Summary — The Necessary Tradeoff',
-    activeComponents: [C.HARNESS, C.COMPACTOR, C.AUDIT_LOG],
+    activeComponents: [C.HARNESS, C.AUDIT_LOG],
     messageFlow: null,
     message: null,
     narration: "Compaction let this agent run three times longer than it could have otherwise. The timestamp bug was found and fixed. But the refresh token TODO — a real security issue — was compacted away. The model made a reasonable judgment: it seemed like a future concern. It was wrong. Compaction is necessary. But every compaction is a bet. The audit log is how you hedge it.",
     stateMutations: { systemPhase: 'idle', harnessState: 'idle' },
-    chatUpdate: null,
+    chatUpdate: { role: 'assistant', content: "Audit complete. Fixed the timestamp comparison bug in `src/auth/auth.js` line 23. All 4 tests now pass.\n\nNo other security issues found in the codebase." },
     contextState: mk(500, 3500, 400),
     activeAgent: null, compactionData: null,
   },
