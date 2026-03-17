@@ -192,7 +192,7 @@ PLAYWRIGHT_BROWSERS_PATH=/home/dev/.playwright-browsers node /tmp/screenshot.js
 | harness | #92400e | #f59e0b | #fbbf24 | Harness boxes, Act 2 accent |
 | tools | #065f46 | #10b981 | #34d399 | Tool boxes |
 | agents | #1e3a5f | #3b82f6 | #60a5fa | Agent boxes, Act 3 accent |
-| compaction | #7c2d12 | #f97316 | #fb923c | Compaction engine, Act 4 accent |
+| compaction | #7c2d12 | #f97316 | #fb923c | Context compaction state, Act 4 accent |
 | user | #052e16 | #4ade80 | #86efac | User box in diagrams, user chat bubbles |
 
 **Rule:** Every component category must have a visually distinct border color. At 35% opacity (inactive state in diagrams), the border must still be visible against `#0f172a` background.

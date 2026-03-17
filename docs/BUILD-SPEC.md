@@ -91,7 +91,7 @@ tmux send-keys -t glassbox-build:agents.3 'echo "=== Agent D: Chat + Narrator + 
    - Act 1: Simple `[User] → [API/Model] → [User]` linear flow
    - Act 2: Feedback loop with Harness, API/Model, decision diamond, Tool Dispatch, 3 tool boxes
    - Act 3: Pipeline with Orchestrator, Explorer/Builder/Reviewer, mini context meters, handoff edges
-   - Act 4: Act 2 loop + Compaction Engine + Audit Log
+   - Act 4: Act 2 loop (context manager shows compaction state via orange border) + Audit Log
 6. Implement the main `ArchitectureDiagram` component that switches layout based on `currentAct`
 
 **Reference files to read:**

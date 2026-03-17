@@ -12,8 +12,8 @@ Open `index.html` in any modern browser. No install, no build step, no server.
 |-----|-------|----------------|
 | 1 | Traditional GenAI | A single API call with no tools. The model guesses but can't verify. |
 | 2 | The Agentic Loop | Tools are added. The harness loops: call API, execute tool, feed results back. Six API calls, one task. |
-| 3 | Multi-Agent Systems | An orchestrator delegates to Explorer, Builder, and Reviewer. Watch context meters fill and handoffs compress 40,000 tokens into 300. |
-| 4 | Compaction | The context window hits 70%. A compaction engine summarizes 140,000 tokens down to 3,500 — but a critical TODO gets lost. |
+| 3 | Multi-Agent Systems | An orchestrator delegates to Explorer, Builder, and Reviewer agents, each with its own context. Watch agent handoffs pass compressed summaries back to the orchestrator. |
+| 4 | Compaction | The context window hits 70%. The context manager pauses the loop, sends a compaction prompt to the API, and replaces 140,000 tokens with a 3,500-token summary — but a critical TODO gets lost. |
 
 All four acts use the same scenario: finding and fixing a seconds-vs-milliseconds bug in an authentication module.
 
@@ -65,7 +65,7 @@ Edit any `.js` file, then reassemble:
 
 ```bash
 ./assemble.sh
-# → "Assembled: 3438 lines → index.html"
+# → "Assembled: 3605 lines → index.html"
 ```
 
 Refresh the browser. That's it.
@@ -87,11 +87,11 @@ PLAYWRIGHT_BROWSERS_PATH=/home/dev/.playwright-browsers node /tmp/shot.js
 
 This demo was built using a 4-agent parallel team, each writing one section file. The build spec with agent personas and verification checklist is in [`docs/BUILD-SPEC.md`](docs/BUILD-SPEC.md).
 
-Key takeaway: the section-file approach worked far better than attempting to write the full 3,400-line file monolithically.
+Key takeaway: the section-file approach worked far better than attempting to write the full 3,600-line file monolithically.
 
 ## Building More Demos Like This
 
-This repo was created from the [Glass Box template](https://github.com/your-org/glassbox). See the template's `docs/FRAMEWORK.md` for the reusable playbook and `docs/LESSONS-LEARNED.md` for what worked and what didn't.
+See `docs/FRAMEWORK.md` for the reusable playbook and `docs/LESSONS-LEARNED.md` for what worked and what didn't.
 
 ## License
 

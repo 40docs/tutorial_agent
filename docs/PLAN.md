@@ -135,7 +135,7 @@ SECTION 9:    Application Shell (Context provider, Layout, Keyboard, Landing)
 | 10 | audit_log | Audit Log Pattern | External storage concept shown |
 | 11 | insight | Act 4 Summary | "Compaction is necessary. But every compaction is a bet." |
 
-**Diagram:** Act 2 loop + Compaction Engine box (activates at threshold) + Audit Log (external storage)
+**Diagram:** Act 2 loop layout — context manager border turns orange during compaction + Audit Log (external storage)
 
 ---
 
